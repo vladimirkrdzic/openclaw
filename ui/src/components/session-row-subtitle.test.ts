@@ -132,32 +132,8 @@ describe("resolveSidebarSessionSubtitle", () => {
     expect(resolve("run-2")).toEqual({ subtitle: "Old digest", narration: undefined });
   });
 
-  it("prefers an unread idle final digest over the last reply", () => {
-    const observerDigest = {
-      headline: "Finished with warnings",
-      health: "done" as const,
-      updatedAt: 2_000,
-      revision: 2,
-    };
-    expect(
-      resolveSidebarSessionSubtitle({
-        session: {
-          ...workSession(),
-          lastMessagePreview: "The final reply is durable.",
-          observerDigest,
-          lastReadAt: 1_999,
-        },
-        hasDisplay: false,
-        displaySubtitle: undefined,
-        sidebarLiveActivity: true,
-        narrationLine: undefined,
-        observerDigest: null,
-      }).subtitle,
-    ).toBe("Finished with warnings");
-  });
-
-  it("falls back to the last reply after the idle final digest is read", () => {
-    expect(
+  it("keeps the idle final digest as the subtitle after the row is read", () => {
+    const resolveWithLastReadAt = (lastReadAt: number) =>
       resolveSidebarSessionSubtitle({
         session: {
           ...workSession(),
@@ -168,15 +144,19 @@ describe("resolveSidebarSessionSubtitle", () => {
             updatedAt: 2_000,
             revision: 2,
           },
-          lastReadAt: 2_000,
+          lastReadAt,
         },
         hasDisplay: false,
         displaySubtitle: undefined,
         sidebarLiveActivity: true,
         narrationLine: undefined,
         observerDigest: null,
-      }).subtitle,
-    ).toBe("The final reply is durable.");
+      }).subtitle;
+
+    // Opening a row advances lastReadAt past the digest: the second line must
+    // not lose its text on the click that read it.
+    expect(resolveWithLastReadAt(1_999)).toBe("Finished with warnings");
+    expect(resolveWithLastReadAt(2_000)).toBe("Finished with warnings");
   });
 
   it("keeps attention and agent status ahead of the idle digest and last reply", () => {

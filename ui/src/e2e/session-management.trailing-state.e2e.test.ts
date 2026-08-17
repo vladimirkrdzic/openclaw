@@ -13,7 +13,7 @@ import {
 const suite = createSessionManagementE2eSuite();
 
 suite.define(() => {
-  it("keeps action-only text widest at rest and swaps active state for actions", async () => {
+  it("keeps text width stable and active state visible while title actions show", async () => {
     const context = await suite.browser.newContext({
       locale: "en-US",
       serviceWorkers: "block",
@@ -44,7 +44,7 @@ suite.define(() => {
       await actionOnlyRow.waitFor({ state: "visible", timeout: 10_000 });
       const actionOnlyText = actionOnlyRow.locator(".sidebar-recent-session__text");
       const actionOnlyLink = actionOnlyRow.locator(".sidebar-recent-session__link");
-      const actionOnlyDetails = actionOnlyRow.locator(".sidebar-recent-session__details");
+      const actionOnlyTitleRow = actionOnlyRow.locator(".sidebar-recent-session__title-row");
       const actionOnlyPin = actionOnlyRow.getByRole("button", { name: "Pin session" });
       await expect
         .poll(() => actionOnlyLink.evaluate((element) => getComputedStyle(element).paddingRight))
@@ -53,8 +53,11 @@ suite.define(() => {
 
       await actionOnlyRow.hover();
       await expect.poll(() => actionOpacity(actionOnlyPin)).toBe("1");
+      // The title line, not the second row, reserves the action width.
       await expect
-        .poll(() => actionOnlyDetails.evaluate((element) => getComputedStyle(element).paddingRight))
+        .poll(() =>
+          actionOnlyTitleRow.evaluate((element) => getComputedStyle(element).paddingRight),
+        )
         .toBe("52px");
       const hoveredTextBounds = await actionOnlyText.boundingBox();
 
@@ -62,7 +65,9 @@ suite.define(() => {
       await actionOnlyPin.focus();
       await expect.poll(() => actionOpacity(actionOnlyPin)).toBe("1");
       await expect
-        .poll(() => actionOnlyDetails.evaluate((element) => getComputedStyle(element).paddingRight))
+        .poll(() =>
+          actionOnlyTitleRow.evaluate((element) => getComputedStyle(element).paddingRight),
+        )
         .toBe("52px");
       const focusedTextBounds = await actionOnlyText.boundingBox();
       if (!restingTextBounds || !hoveredTextBounds || !focusedTextBounds) {
@@ -80,24 +85,32 @@ suite.define(() => {
       await expect.poll(() => actionOpacity(state)).toBe("1");
 
       await row.hover();
-      await expect.poll(() => actionOpacity(state)).toBe("0");
+      // Actions no longer occupy the state's cell, so running state stays lit.
+      await expect.poll(() => actionOpacity(state)).toBe("1");
       await expect.poll(() => actionOpacity(pin)).toBe("1");
       await expect.poll(() => actionOpacity(menu)).toBe("1");
 
-      const [nameBounds, pinBounds, menuBounds] = await Promise.all([
+      const [nameBounds, pinBounds, menuBounds, stateBounds] = await Promise.all([
         row.locator(".sidebar-recent-session__name").boundingBox(),
         pin.boundingBox(),
         menu.boundingBox(),
+        state.boundingBox(),
       ]);
-      if (!nameBounds || !pinBounds || !menuBounds) {
+      if (!nameBounds || !pinBounds || !menuBounds || !stateBounds) {
         throw new Error("Expected visible hovered action geometry");
       }
-      expect(nameBounds.y + nameBounds.height / 2).toBeLessThan(pinBounds.y + pinBounds.height / 2);
+      expect(pinBounds.y + pinBounds.height / 2).toBeCloseTo(
+        nameBounds.y + nameBounds.height / 2,
+        0,
+      );
+      expect(pinBounds.y + pinBounds.height / 2).toBeLessThan(
+        stateBounds.y + stateBounds.height / 2,
+      );
       expect(pinBounds.x + pinBounds.width).toBeLessThanOrEqual(menuBounds.x);
 
       await page.mouse.move(0, 0);
       await pin.focus();
-      await expect.poll(() => actionOpacity(state)).toBe("0");
+      await expect.poll(() => actionOpacity(state)).toBe("1");
       await expect.poll(() => actionOpacity(pin)).toBe("1");
       await expect.poll(() => actionOpacity(menu)).toBe("1");
 
@@ -109,8 +122,9 @@ suite.define(() => {
       if (!focusedNameBounds || !focusedPinBounds || !focusedMenuBounds) {
         throw new Error("Expected visible focused action geometry");
       }
-      expect(focusedNameBounds.y + focusedNameBounds.height / 2).toBeLessThan(
-        focusedPinBounds.y + focusedPinBounds.height / 2,
+      expect(focusedPinBounds.y + focusedPinBounds.height / 2).toBeCloseTo(
+        focusedNameBounds.y + focusedNameBounds.height / 2,
+        0,
       );
       expect(focusedPinBounds.x + focusedPinBounds.width).toBeLessThanOrEqual(focusedMenuBounds.x);
     } finally {
@@ -167,14 +181,20 @@ suite.define(() => {
       expect(
         Math.abs(forkBounds.y + forkBounds.height / 2 - (nameBounds.y + nameBounds.height / 2)),
       ).toBeLessThanOrEqual(2);
-      expect(nameBounds.y + nameBounds.height / 2).toBeLessThan(pinBounds.y + pinBounds.height / 2);
+      // Touch keeps the actions up, so the clipped title ends before them on the
+      // same line instead of running underneath.
+      expect(pinBounds.y + pinBounds.height / 2).toBeCloseTo(
+        nameBounds.y + nameBounds.height / 2,
+        0,
+      );
+      expect(nameBounds.x + nameBounds.width).toBeLessThanOrEqual(pinBounds.x + 1);
       expect(pinBounds.x + pinBounds.width).toBeLessThanOrEqual(menuBounds.x);
     } finally {
       await context.close();
     }
   });
 
-  it("keeps semantic state beside always-visible touch actions", async () => {
+  it("keeps semantic state below always-visible touch actions", async () => {
     const context = await suite.browser.newContext({
       hasTouch: true,
       locale: "en-US",
@@ -211,13 +231,15 @@ suite.define(() => {
       if (!stateBounds || !pinBounds) {
         throw new Error("Expected visible touch state and action geometry");
       }
-      expect(stateBounds.x + stateBounds.width).toBeLessThanOrEqual(pinBounds.x);
+      // Separate lines, so state keeps its full second-row width under the
+      // always-visible touch actions rather than being pushed aside by them.
+      expect(stateBounds.y).toBeGreaterThanOrEqual(pinBounds.y + pinBounds.height / 2);
     } finally {
       await context.close();
     }
   });
 
-  it("does not widen desktop session text when hover actions replace trailing state", async () => {
+  it("keeps desktop session text and trailing state stable under title actions", async () => {
     const context = await suite.browser.newContext({
       locale: "en-US",
       serviceWorkers: "block",
@@ -322,7 +344,7 @@ suite.define(() => {
         );
       }
       const link = row.locator(".sidebar-recent-session__link");
-      const details = row.locator(".sidebar-recent-session__details");
+      const titleRow = row.locator(".sidebar-recent-session__title-row");
       const pin = row.getByRole("button", { name: "Pin session" });
       const menu = row.getByRole("button", { name: "Open session menu" });
       await expect
@@ -351,11 +373,13 @@ suite.define(() => {
         restingStateBounds.y + restingStateBounds.height / 2,
       );
       await row.hover();
-      await expect.poll(() => actionOpacity(state)).toBe("0");
+      // Combined state (PR chip, spinner, unread dot) shares the second row with
+      // the subtitle and keeps its width while the actions sit on the title.
+      await expect.poll(() => actionOpacity(state)).toBe("1");
       await expect.poll(() => actionOpacity(pin)).toBe("1");
       await expect.poll(() => actionOpacity(menu)).toBe("1");
       await expect
-        .poll(() => details.evaluate((element) => getComputedStyle(element).paddingRight))
+        .poll(() => titleRow.evaluate((element) => getComputedStyle(element).paddingRight))
         .toBe("52px");
 
       const [textBounds, nameBounds, pinBounds, menuBounds] = await Promise.all([
@@ -368,15 +392,19 @@ suite.define(() => {
         throw new Error("Expected visible combined session action geometry");
       }
       expect(textBounds.width).toBeCloseTo(restingTextBounds.width, 1);
-      expect(nameBounds.y + nameBounds.height / 2).toBeLessThan(pinBounds.y + pinBounds.height / 2);
+      expect(pinBounds.y + pinBounds.height / 2).toBeCloseTo(
+        nameBounds.y + nameBounds.height / 2,
+        0,
+      );
+      expect(nameBounds.x + nameBounds.width).toBeLessThanOrEqual(pinBounds.x + 1);
       expect(pinBounds.x + pinBounds.width).toBeLessThanOrEqual(menuBounds.x);
       await page.mouse.move(0, 0);
       await pin.focus();
-      await expect.poll(() => actionOpacity(state)).toBe("0");
+      await expect.poll(() => actionOpacity(state)).toBe("1");
       await expect.poll(() => actionOpacity(pin)).toBe("1");
       await expect.poll(() => actionOpacity(menu)).toBe("1");
       await expect
-        .poll(() => details.evaluate((element) => getComputedStyle(element).paddingRight))
+        .poll(() => titleRow.evaluate((element) => getComputedStyle(element).paddingRight))
         .toBe("52px");
 
       const [focusedTextBounds, focusedNameBounds, focusedPinBounds, focusedMenuBounds] =
@@ -390,8 +418,9 @@ suite.define(() => {
         throw new Error("Expected visible focused session action geometry");
       }
       expect(focusedTextBounds.width).toBeCloseTo(restingTextBounds.width, 1);
-      expect(focusedNameBounds.y + focusedNameBounds.height / 2).toBeLessThan(
-        focusedPinBounds.y + focusedPinBounds.height / 2,
+      expect(focusedPinBounds.y + focusedPinBounds.height / 2).toBeCloseTo(
+        focusedNameBounds.y + focusedNameBounds.height / 2,
+        0,
       );
       expect(focusedPinBounds.x + focusedPinBounds.width).toBeLessThanOrEqual(focusedMenuBounds.x);
     } finally {

@@ -5794,10 +5794,10 @@ td.data-table-key-col {
 }
 
 /* ── Session row primitives ──
-   Shared by the sidebar recents list and the chat session picker. Rows read
-   as plain text lines: attribute badges follow the title, and the trailing
-   aside stacks transient state, relative time, and management actions in one
-   grid cell, so hovering swaps state for actions without any layout shift. */
+   Shared by the sidebar recents list and the session catalog rows. Rows read
+   as two text lines: management actions ride the title line and shorten the
+   title while they are up, and the second line keeps subtitle, badges,
+   transient state, and relative time at full width — neither line moves. */
 .session-row-host {
   position: relative;
 }
@@ -6029,10 +6029,6 @@ td.data-table-key-col {
   pointer-events: auto;
 }
 
-.session-row-host:is(:hover, :focus-within) :is(.session-row-trail, .session-row-state) {
-  opacity: 0;
-}
-
 /* Sidebar rows are now the direct management surface after removing the
    duplicate picker; touch users need pin/menu controls without hover. */
 @media (hover: none), (pointer: coarse) {
@@ -6043,22 +6039,6 @@ td.data-table-key-col {
 
   .sidebar-recent-session .session-action:disabled {
     opacity: 0.35;
-  }
-
-  .sidebar-recent-session .session-row-trail {
-    opacity: 0;
-  }
-
-  .sidebar-recent-session .session-row-aside:has(> .session-row-state) {
-    column-gap: 1px;
-  }
-
-  .sidebar-recent-session .session-row-state {
-    grid-area: 1 / 1;
-  }
-
-  .sidebar-recent-session .session-row-actions {
-    grid-area: 1 / 2;
   }
 }
 

@@ -253,7 +253,7 @@ suite.define(() => {
       await recentLabel.waitFor({ state: "visible", timeout: 10_000 });
       const layout = await recentLabel.evaluate((label) => ({
         clientWidth: label.clientWidth,
-        linkWidth: label.parentElement?.clientWidth ?? 0,
+        titleRowWidth: label.parentElement?.clientWidth ?? 0,
         rowWidth: label.closest<HTMLElement>(".sidebar-recent-session")?.clientWidth ?? 0,
         scrollWidth: label.scrollWidth,
         text: label.textContent,
@@ -437,14 +437,10 @@ suite.define(() => {
         expect(atom.bottom).toBeLessThanOrEqual(layout.endcap.bottom);
       }
 
+      const titleWidthBeforeHover = await busyRow
+        .locator(".sidebar-recent-session__name")
+        .evaluate((name) => name.clientWidth);
       await busyRow.hover();
-      await expect
-        .poll(() =>
-          busyRow
-            .locator(".sidebar-recent-session__details-endcap")
-            .evaluate((element) => getComputedStyle(element).opacity),
-        )
-        .toBe("0");
       await expect
         .poll(() =>
           busyRow
@@ -452,6 +448,39 @@ suite.define(() => {
             .evaluate((element) => getComputedStyle(element).opacity),
         )
         .toBe("1");
+      // Actions ride the title line, so the second row keeps showing status and
+      // the title (not the subtitle) is what gives up width for the buttons.
+      await expect
+        .poll(() =>
+          busyRow
+            .locator(".sidebar-recent-session__details-endcap")
+            .evaluate((element) => getComputedStyle(element).opacity),
+        )
+        .toBe("1");
+      const hovered = await busyRow.evaluate((row) => {
+        const box = (selector: string) => {
+          const element = row.querySelector<HTMLElement>(selector);
+          if (!element) {
+            throw new Error(`Missing session row fixture ${selector}`);
+          }
+          return element.getBoundingClientRect();
+        };
+        const name = box(".sidebar-recent-session__name");
+        const actions = box(".session-row-actions");
+        const subtitle = box(".sidebar-recent-session__subtitle");
+        return {
+          actionsCenterY: (actions.top + actions.bottom) / 2,
+          nameCenterY: (name.top + name.bottom) / 2,
+          nameRight: name.right,
+          nameWidth: row.querySelector<HTMLElement>(".sidebar-recent-session__name")!.clientWidth,
+          actionsLeft: actions.left,
+          subtitleCenterY: (subtitle.top + subtitle.bottom) / 2,
+        };
+      });
+      expect(hovered.actionsCenterY).toBeCloseTo(hovered.nameCenterY, 0);
+      expect(hovered.actionsCenterY).toBeLessThan(hovered.subtitleCenterY);
+      expect(hovered.nameRight).toBeLessThanOrEqual(hovered.actionsLeft + 1);
+      expect(hovered.nameWidth).toBeLessThan(titleWidthBeforeHover);
       if (captureUiProofEnabled) {
         await page.screenshot({
           fullPage: true,

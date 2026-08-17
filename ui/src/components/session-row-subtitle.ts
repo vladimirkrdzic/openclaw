@@ -44,12 +44,12 @@ export function resolveSidebarSessionSubtitle(params: {
   const projectedDigest = running
     ? pickFreshestObserverDigest(liveCandidate, rowCandidate)
     : pickFreshestObserverDigest(params.observerDigest, session.observerDigest);
-  const finalDigestUnread = Boolean(
-    projectedDigest &&
-    (projectedDigest.health === "done" || projectedDigest.health === "failed") &&
-    (session.lastReadAt ?? 0) < projectedDigest.updatedAt,
-  );
-  const observer = running || finalDigestUnread ? projectedDigest?.headline : undefined;
+  // A settled run's headline is durable row metadata, not an unread badge:
+  // gating it on `lastReadAt` emptied the subtitle the moment the row was
+  // opened, so the second line lost its text on the click that read it.
+  const finalDigestSettled =
+    projectedDigest?.health === "done" || projectedDigest?.health === "failed";
+  const observer = running || finalDigestSettled ? projectedDigest?.headline : undefined;
   const narration =
     attention || agentStatus || observer || !params.sidebarLiveActivity || !running
       ? undefined
