@@ -3218,10 +3218,7 @@ describe("runCodexAppServerAttempt", () => {
       diagnosticEvents
         .filter((event) => event.type.startsWith("tool.execution."))
         .map((event) => event.type),
-    ).toEqual([
-      "tool.execution.started",
-      "tool.execution.error",
-    ]);
+    ).toEqual(["tool.execution.started", "tool.execution.error"]);
     expect(diagnosticEvents.at(-1)).toMatchObject({
       terminalReason: "failed",
       errorCode: "tool_outcome_unknown",
@@ -3278,10 +3275,7 @@ describe("runCodexAppServerAttempt", () => {
       diagnosticEvents
         .filter((event) => event.type.startsWith("tool.execution."))
         .map((event) => event.type),
-    ).toEqual([
-      "tool.execution.started",
-      "tool.execution.completed",
-    ]);
+    ).toEqual(["tool.execution.started", "tool.execution.completed"]);
     expect(JSON.stringify(diagnosticEvents)).not.toContain("sensitive warm-resume query");
   });
 
