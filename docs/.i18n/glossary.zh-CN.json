@@ -1782,5 +1782,21 @@
   {
     "source": "CLI Automation",
     "target": "CLI 自动化"
+  },
+  {
+    "source": "Widget panel",
+    "target": "小组件面板"
+  },
+  {
+    "source": "Show widget",
+    "target": "显示小组件"
+  },
+  {
+    "source": "Session dashboards",
+    "target": "会话仪表板"
+  },
+  {
+    "source": "macOS widget panel",
+    "target": "macOS 小组件面板"
   }
 ]
