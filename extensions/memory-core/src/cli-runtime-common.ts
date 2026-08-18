@@ -386,7 +386,43 @@ export async function scanMemoryManagerSources(
     return undefined;
   }
   const sources = (status.sources?.length ? status.sources : ["memory"]) as MemorySourceName[];
-  return await scanMemorySources({ workspaceDir, agentId, sources, extraPaths: status.extraPaths });
+  const diagnosticScan = await scanMemorySources({
+    workspaceDir,
+    agentId,
+    sources,
+    extraPaths: status.extraPaths,
+  });
+  const snapshot = asNullableRecord(asNullableRecord(status.custom)?.sourceScan);
+  if (!snapshot || !Array.isArray(snapshot.sources)) {
+    return diagnosticScan;
+  }
+  const authoritativeSources = snapshot.sources.flatMap((value): SourceScan[] => {
+    const entry = asNullableRecord(value);
+    const source = entry?.source;
+    const totalFiles = entry?.totalFiles;
+    return (source === "memory" || source === "sessions") &&
+      (totalFiles === null || typeof totalFiles === "number")
+      ? [{ source, totalFiles, issues: [] }]
+      : [];
+  });
+  const totalFiles = snapshot.totalFiles;
+  if (
+    authoritativeSources.length !== snapshot.sources.length ||
+    (totalFiles !== null && typeof totalFiles !== "number")
+  ) {
+    return diagnosticScan;
+  }
+  return {
+    sources: authoritativeSources.map((source) => ({
+      source: source.source,
+      totalFiles: source.totalFiles,
+      issues:
+        diagnosticScan.sources.find((candidate) => candidate.source === source.source)?.issues ??
+        [],
+    })),
+    totalFiles,
+    issues: diagnosticScan.issues,
+  };
 }
 
 export function formatMemoryIndexOutcome(

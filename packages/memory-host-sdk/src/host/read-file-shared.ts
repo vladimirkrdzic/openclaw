@@ -12,6 +12,25 @@ export const DEFAULT_MEMORY_READ_MAX_CHARS = 12_000;
 
 export type { MemoryReadResult } from "./types.js";
 
+/**
+ * Legacy bare-empty memory read compatibility: releases before explicit
+ * `status: "not_found"` used `{ text: "", path }` for missing files.
+ * Remove this normalization at the next Plugin SDK major.
+ */
+export function normalizeMemoryReadResult(result: MemoryReadResult): MemoryReadResult {
+  if (
+    result.status === undefined &&
+    result.text === "" &&
+    result.from === undefined &&
+    result.lines === undefined &&
+    result.truncated === undefined &&
+    result.nextFrom === undefined
+  ) {
+    return { status: "not_found", text: "", path: result.path };
+  }
+  return result;
+}
+
 /** Build the continuation notice appended to truncated memory excerpts. */
 function buildContinuationNotice(params: {
   nextFrom: number | undefined;

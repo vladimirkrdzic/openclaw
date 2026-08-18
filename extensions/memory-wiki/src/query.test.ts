@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { filterMemorySearchHitsBySessionVisibility } from "@openclaw/memory-core/api.js";
+import type { MemoryReadResult } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../api.js";
 import { compileMemoryWikiVault } from "./compile.js";
@@ -159,7 +160,7 @@ function createMemoryManager(overrides?: {
     source: "memory" | "sessions";
     citation?: string;
   }>;
-  readResult?: { text: string; path: string; from?: number; lines?: number };
+  readResult?: MemoryReadResult;
 }) {
   return {
     search: vi.fn().mockResolvedValue(overrides?.searchResults ?? []),
@@ -1748,7 +1749,7 @@ describe("getMemoryWikiPage", () => {
     );
   });
 
-  it("reports genuinely missing shared memory files through the wiki_get tool", async () => {
+  it("normalizes legacy bare-empty shared memory misses from external managers", async () => {
     const { config } = await createQueryVault({
       initialize: true,
       config: { search: { backend: "shared", corpus: "memory" } },

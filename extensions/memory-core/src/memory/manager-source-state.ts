@@ -1,6 +1,13 @@
 // Memory Core plugin module implements manager source state behavior.
 import type { SQLInputValue } from "node:sqlite";
-import type { MemorySource } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
+import type { ResolvedMemorySearchConfig } from "openclaw/plugin-sdk/memory-core-host-engine-foundation";
+import {
+  buildFileEntry,
+  listMemoryFiles,
+  runWithConcurrency,
+  type MemoryFileEntry,
+  type MemorySource,
+} from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 
 export type MemorySourceFileStateRow = {
   path: string;
@@ -18,6 +25,68 @@ type MemorySourceStateDb = {
 
 const MEMORY_SOURCE_FILE_STATE_SQL = `SELECT path, hash, mtime, size FROM memory_index_sources WHERE source = ?`;
 const MEMORY_SOURCE_FILE_HASH_SQL = `SELECT hash FROM memory_index_sources WHERE path = ? AND source = ?`;
+
+/** Resolve exactly the entries eligible for indexing, including validated multimodal files. */
+export async function resolveMemorySourceFileEntries(params: {
+  workspaceDir: string;
+  settings: Pick<ResolvedMemorySearchConfig, "extraPaths" | "multimodal">;
+  concurrency: number;
+}): Promise<MemoryFileEntry[]> {
+  const files = await listMemoryFiles(
+    params.workspaceDir,
+    params.settings.extraPaths,
+    params.settings.multimodal,
+  );
+  return (
+    await runWithConcurrency(
+      files.map(
+        (file) => async () =>
+          await buildFileEntry(file, params.workspaceDir, params.settings.multimodal),
+      ),
+      params.concurrency,
+    )
+  ).filter((entry): entry is MemoryFileEntry => entry !== null);
+}
+
+/** Compare a resolved source snapshot with the persisted index without writing either side. */
+function hasMemorySourceDrift(params: {
+  entries: readonly MemoryFileEntry[];
+  indexedRows: readonly MemorySourceFileStateRow[];
+}): boolean {
+  const indexedByPath = new Map(params.indexedRows.map((row) => [row.path, row]));
+  if (indexedByPath.size !== params.entries.length) {
+    return true;
+  }
+  return params.entries.some((entry) => indexedByPath.get(entry.path)?.hash !== entry.hash);
+}
+
+export async function inspectMemorySourceState(params: {
+  db: MemorySourceStateDb;
+  workspaceDir: string;
+  settings: Pick<ResolvedMemorySearchConfig, "extraPaths" | "multimodal">;
+  concurrency: number;
+}): Promise<{ dirty: boolean; totalFiles: number }> {
+  const entries = await resolveMemorySourceFileEntries(params);
+  const indexedRows = loadMemorySourceFileState({ db: params.db, source: "memory" }).rows;
+  return {
+    dirty: hasMemorySourceDrift({ entries, indexedRows }),
+    totalFiles: entries.length,
+  };
+}
+
+export function buildMemorySourceScan(
+  sources: Iterable<MemorySource>,
+  totals: ReadonlyMap<MemorySource, number>,
+) {
+  const entries = Array.from(sources, (source) => ({
+    source,
+    totalFiles: totals.get(source) ?? null,
+  }));
+  const totalFiles = entries.some((entry) => entry.totalFiles === null)
+    ? null
+    : entries.reduce((total, entry) => total + (entry.totalFiles ?? 0), 0);
+  return { sources: entries, totalFiles };
+}
 
 export function loadMemorySourceFileState(params: {
   db: MemorySourceStateDb;

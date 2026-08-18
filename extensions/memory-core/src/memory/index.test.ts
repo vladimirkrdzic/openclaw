@@ -17,6 +17,7 @@ import {
   openOpenClawAgentDatabase,
 } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { describe, expect, it, vi } from "vitest";
+import { scanMemoryManagerSources } from "../cli-runtime-common.js";
 import {
   createManagerIndexFixture,
   type ManagerIndexFixture,
@@ -2062,13 +2063,14 @@ describe("memory index", () => {
     await fs.mkdir(mediaDir, { recursive: true });
     await fs.writeFile(path.join(mediaDir, "diagram.png"), Buffer.from("png"));
     await fs.writeFile(path.join(mediaDir, "meeting.wav"), Buffer.from("wav"));
+    await fs.writeFile(path.join(mediaDir, "oversized.png"), Buffer.alloc(32, 1));
     await fs.writeFile(path.join(fixture.paths.memory, "default-diagram.png"), Buffer.from("png"));
 
     const cfg = createCfg({
       provider: "gemini",
       model: "gemini-embedding-2-preview",
       extraPaths: [mediaDir],
-      multimodal: { enabled: true, modalities: ["image", "audio"] },
+      multimodal: { enabled: true, modalities: ["image", "audio"], maxFileBytes: 16 },
     });
     const manager = await getPersistentManager(cfg);
     await manager.sync({ reason: "test" });
@@ -2091,6 +2093,51 @@ describe("memory index", () => {
 
     const audioResults = await manager.search("audio");
     expect(audioResults.some((result) => result.path.endsWith("meeting.wav"))).toBe(true);
+
+    await manager.close?.();
+    const statusManager = await getFreshManager(cfg, "status");
+    try {
+      const status = statusManager.status();
+      const sourceScan = status.custom?.sourceScan as
+        | {
+            sources: Array<{ source: string; totalFiles: number | null }>;
+            totalFiles: number | null;
+          }
+        | undefined;
+      expect(sourceScan?.sources.find((entry) => entry.source === "memory")?.totalFiles).toBe(
+        status.files,
+      );
+      expect(sourceScan?.totalFiles).toBe(status.files);
+      await expect(scanMemoryManagerSources(status, "main")).resolves.toMatchObject({
+        totalFiles: status.files,
+      });
+    } finally {
+      await statusManager.close?.();
+    }
+  });
+
+  it("detects memory source edits in read-only status without reindexing", async () => {
+    const cfg = createCfg({});
+    const indexedManager = await getFreshManager(cfg);
+    await indexedManager.sync({ reason: "test", force: true });
+    await indexedManager.close?.();
+
+    const sourcePath = path.join(fixture.paths.memory, "2026-01-12.md");
+    await fs.writeFile(sourcePath, "# Offline edit\n\nThis changed outside the gateway.\n");
+
+    const statusManager = await getFreshManager(cfg, "status");
+    try {
+      expect(statusManager.status().dirty).toBe(true);
+      const db = Reflect.get(statusManager, "db") as DatabaseSync;
+      const indexed = db
+        .prepare("SELECT hash FROM memory_index_sources WHERE path = ? AND source = 'memory'")
+        .get("memory/2026-01-12.md") as { hash: string } | undefined;
+      expect(indexed?.hash).not.toBe(
+        hashText("# Offline edit\n\nThis changed outside the gateway.\n"),
+      );
+    } finally {
+      await statusManager.close?.();
+    }
   });
 
   it("reports vector availability after probe", async () => {

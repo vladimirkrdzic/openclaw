@@ -40,6 +40,7 @@ export {
   normalizeProjectAnnotationKey,
   normalizeExtraMemoryPathEntries,
   normalizeExtraMemoryPaths,
+  normalizeMemoryReadResult,
   parseEmbedding,
   readMemoryFile,
   readCuratedProjectMemoryCandidates,

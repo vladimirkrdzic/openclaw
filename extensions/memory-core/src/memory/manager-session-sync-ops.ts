@@ -24,7 +24,7 @@ import {
   resolveMemorySessionStartupState,
   type MemorySessionStartupFileState,
 } from "./manager-session-sync-state.js";
-import { loadMemorySourceFileState } from "./manager-source-state.js";
+import { inspectMemorySourceState, loadMemorySourceFileState } from "./manager-source-state.js";
 import { MemoryManagerWatchOps } from "./manager-watch-ops.js";
 
 const SESSION_DIRTY_DEBOUNCE_MS = 5000;
@@ -42,6 +42,31 @@ type MemorySessionTranscriptUpdate = {
 };
 
 export abstract class MemoryManagerSessionSyncOps extends MemoryManagerWatchOps {
+  protected async inspectStatusSourceDrift(): Promise<void> {
+    if (this.sources.has("memory")) {
+      try {
+        const state = await inspectMemorySourceState({
+          db: this.db,
+          workspaceDir: this.workspaceDir,
+          settings: this.settings,
+          concurrency: this.getIndexConcurrency(),
+        });
+        this.sourceFileTotals.set("memory", state.totalFiles);
+        this.dirty ||= state.dirty;
+      } catch (err) {
+        this.dirty = true;
+        log.warn("memory status source drift detection failed: " + String(err));
+      }
+    }
+    if (this.sources.has("sessions")) {
+      try {
+        await this.markSessionStartupCatchupDirtyFiles();
+      } catch (err) {
+        log.warn("memory status session dirty detection failed: " + String(err));
+      }
+    }
+  }
+
   protected listSessionCorpusEntries(): Promise<SessionTranscriptCorpusEntry[]> {
     return listSessionTranscriptCorpusEntriesForAgent(this.agentId);
   }
@@ -168,6 +193,7 @@ export abstract class MemoryManagerSessionSyncOps extends MemoryManagerWatchOps 
         this.getIndexConcurrency(),
       )
     ).filter((file): file is MemorySessionStartupFileState => file !== null);
+    this.sourceFileTotals.set("sessions", fileStates.length);
     const { dirtyFiles, hasStaleIndexedPaths } = resolveMemorySessionStartupState({
       files: fileStates,
       existingRows,

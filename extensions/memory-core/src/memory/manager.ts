@@ -13,6 +13,7 @@ import {
   MEMORY_EMBEDDING_CACHE_TABLE,
   MEMORY_INDEX_VECTOR_TABLE,
   type MemoryProviderStatus,
+  type MemoryReadResult,
   type MemorySearchManager,
   type MemorySessionSyncTarget,
   type MemorySource,
@@ -42,6 +43,7 @@ import {
 } from "./manager-registry.js";
 import type { MemoryIndexIdentityState } from "./manager-reindex-state.js";
 import { MemorySearchOrchestration } from "./manager-search-orchestration.js";
+import { buildMemorySourceScan } from "./manager-source-state.js";
 import {
   collectMemoryStatusAggregate,
   resolveInitialMemoryDirty,
@@ -177,12 +179,8 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
                 purpose: params.purpose,
                 acquireLocalService: params.acquireLocalService,
               });
-              if (purpose === "status" && manager.sources.has("sessions")) {
-                try {
-                  await manager.markSessionStartupCatchupDirtyFiles();
-                } catch (err) {
-                  log.warn("memory status session dirty detection failed: " + String(err));
-                }
+              if (purpose === "status") {
+                await manager.inspectStatusSourceDrift();
               }
               return manager;
             },
@@ -439,7 +437,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
     relPath: string;
     from?: number;
     lines?: number;
-  }): Promise<{ text: string; path: string }> {
+  }): Promise<MemoryReadResult> {
     return await readMemoryFile({
       workspaceDir: this.workspaceDir,
       extraPaths: this.settings.extraPaths,
@@ -549,6 +547,7 @@ export class MemoryIndexManager extends MemorySearchOrchestration implements Mem
         providerState: this.providerLifecycle,
         providerUnavailableReason: this.providerUnavailableReason,
         indexIdentity: this.indexIdentityState,
+        sourceScan: buildMemorySourceScan(this.sources, this.sourceFileTotals),
       },
     };
   }

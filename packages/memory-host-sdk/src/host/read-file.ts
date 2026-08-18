@@ -136,14 +136,14 @@ export async function readMemoryFile(params: {
       await workspaceRoot.resolve(relPath);
     } catch (err) {
       if (isFileMissingError(err)) {
-        return { text: "", path: relPath };
+        return { text: "", path: relPath, status: "not_found" };
       }
       throw err;
     }
   }
   const statResult = await statRegularFile(absPath);
   if (statResult.missing) {
-    return { text: "", path: relPath };
+    return { text: "", path: relPath, status: "not_found" };
   }
   let content: string;
   try {
@@ -155,7 +155,7 @@ export async function readMemoryFile(params: {
     ).buffer.toString("utf-8");
   } catch (err) {
     if (isFileDisappearedDuringReadError(err)) {
-      return { text: "", path: relPath };
+      return { text: "", path: relPath, status: "not_found" };
     }
     throw err;
   }

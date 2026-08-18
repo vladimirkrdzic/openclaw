@@ -83,6 +83,18 @@ External-plugin compatibility work follows this order:
 6. Remove only after the announced migration window, usually in a major
    release.
 
+### Memory read missing results
+
+Memory readers now return `status: "not_found"` when an allowed file is
+missing. Successful empty excerpts still include `from` and `lines`.
+
+External memory runtimes released before this contract may return the legacy
+bare-empty sentinel `{ text: "", path }`. Consumers can temporarily normalize
+that exact shape with `normalizeMemoryReadResult` from
+`openclaw/plugin-sdk/memory-core-host-engine-storage`. Migrate producers to the
+explicit status now; the legacy normalization will be removed at the next
+Plugin SDK major.
+
 ### Channel state migration declarations
 
 Channel plugins should declare `doctorContract.stateMigrations: true` in

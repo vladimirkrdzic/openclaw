@@ -2,6 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { filterMemorySearchHitsBySessionVisibility } from "@openclaw/memory-core/api.js";
+import { normalizeMemoryReadResult } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 import type { MemorySearchResult } from "openclaw/plugin-sdk/memory-core-host-runtime-files";
 import { resolveDefaultAgentId, resolveSessionAgentId } from "openclaw/plugin-sdk/memory-host-core";
 import { getActiveMemorySearchManager } from "openclaw/plugin-sdk/memory-host-search";
@@ -1458,12 +1459,14 @@ export async function getMemoryWikiPage(input: {
       continue;
     }
 
-    const result = await manager.readFile({
-      relPath,
-      from: fromLine,
-      lines: lineCount,
-    });
-    if (result.path === relPath && result.text === "" && result.from === undefined) {
+    const result = normalizeMemoryReadResult(
+      await manager.readFile({
+        relPath,
+        from: fromLine,
+        lines: lineCount,
+      }),
+    );
+    if (result.status === "not_found") {
       continue;
     }
     return {

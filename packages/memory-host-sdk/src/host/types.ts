@@ -84,8 +84,9 @@ export type MemorySearchRuntimeDebug = {
   };
 };
 
-/** Result of reading a memory file, optionally paginated/truncated. */
-export type MemoryReadResult = {
+/** Successful memory-file excerpt, optionally paginated/truncated. */
+type MemoryReadSuccessResult = {
+  status?: never;
   text: string;
   path: string;
   truncated?: boolean;
@@ -93,6 +94,19 @@ export type MemoryReadResult = {
   lines?: number;
   nextFrom?: number;
 };
+
+/** Explicit result for an allowed memory path that does not exist. */
+type MemoryReadNotFoundResult = {
+  status: "not_found";
+  text: "";
+  path: string;
+  truncated?: never;
+  from?: never;
+  lines?: never;
+  nextFrom?: never;
+};
+
+export type MemoryReadResult = MemoryReadSuccessResult | MemoryReadNotFoundResult;
 
 /** Aggregated memory backend status for CLI/UI diagnostics. */
 export type MemoryVectorIndexState =

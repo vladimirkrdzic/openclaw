@@ -1,5 +1,6 @@
 // Memory Core plugin module implements tools.shared behavior.
 import { optionalFiniteNumberSchema, stringEnum } from "openclaw/plugin-sdk/channel-actions";
+import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
 import { createLazyRuntimeModule } from "openclaw/plugin-sdk/lazy-runtime";
 import {
   listMemoryCorpusSupplements,
@@ -14,6 +15,10 @@ import { Type } from "typebox";
 import type { MemoryCoreAcquireLocalService } from "./memory/embedding-local-service.js";
 type MemorySearchManagerResult = Awaited<
   ReturnType<(typeof import("./memory/index.js"))["getMemorySearchManager"]>
+>;
+type MemoryCorpusSupplementRegistration = ReturnType<typeof listMemoryCorpusSupplements>[number];
+type MemoryCorpusGetResult = NonNullable<
+  Awaited<ReturnType<MemoryCorpusSupplementRegistration["supplement"]["get"]>>
 >;
 type MemoryToolOptions = {
   config?: OpenClawConfig;
@@ -41,7 +46,7 @@ export const MemoryGetSchema = Type.Object({
   corpus: Type.Optional(stringEnum(["memory", "wiki", "all"])),
 });
 
-function resolveMemoryToolContext(options: MemoryToolOptions) {
+function resolveMemoryToolAgentContext(options: MemoryToolOptions) {
   const cfg = options.getConfig ? options.getConfig() : options.config;
   if (!cfg) {
     return null;
@@ -51,10 +56,12 @@ function resolveMemoryToolContext(options: MemoryToolOptions) {
     config: cfg,
     agentId: options.agentId,
   });
-  if (!resolveMemorySearchConfig(cfg, agentId)) {
-    return null;
-  }
   return { cfg, agentId };
+}
+
+function resolveMemoryToolContext(options: MemoryToolOptions) {
+  const context = resolveMemoryToolAgentContext(options);
+  return context && resolveMemorySearchConfig(context.cfg, context.agentId) ? context : null;
 }
 
 export async function getMemoryManagerContextWithPurpose(params: {
@@ -95,7 +102,7 @@ export function createMemoryTool(params: {
   options: MemoryToolOptions;
   label: string;
   name: string;
-  description: string;
+  description: (ctx: { cfg: OpenClawConfig; agentId: string }) => string;
   parameters: typeof MemorySearchSchema | typeof MemoryGetSchema;
   execute: (ctx: { cfg: OpenClawConfig; agentId: string }) => AnyAgentTool["execute"];
 }): AnyAgentTool | null {
@@ -106,7 +113,9 @@ export function createMemoryTool(params: {
   return {
     label: params.label,
     name: params.name,
-    description: params.description,
+    get description() {
+      return params.description(resolveMemoryToolAgentContext(params.options) ?? ctx);
+    },
     parameters: params.parameters,
     execute: async (toolCallId, toolParams, signal, onUpdate) => {
       const latestCtx = params.options.getConfig ? resolveMemoryToolContext(params.options) : ctx;
@@ -164,6 +173,55 @@ export function buildMemorySearchUnavailableResult(
   };
 }
 
+type MemorySupplementSearchOutcome =
+  | { outcome: "ok"; results: MemoryCorpusSearchResult[] }
+  | { outcome: "not-registered"; results: [] }
+  | { outcome: "unavailable"; results: MemoryCorpusSearchResult[]; error: string };
+
+type MemorySupplementReadOutcome =
+  | { outcome: "ok"; result: (Omit<MemoryCorpusGetResult, "content"> & { text: string }) | null }
+  | { outcome: "not-registered"; result: null }
+  | {
+      outcome: "unavailable";
+      result: (Omit<MemoryCorpusGetResult, "content"> & { text: string }) | null;
+      error: string;
+    };
+
+export type MemoryCorpusOutcome =
+  | { corpus: "memory" | "wiki"; outcome: "ok" }
+  | { corpus: "memory" | "wiki"; outcome: "not-registered" }
+  | { corpus: "memory" | "wiki"; outcome: "unavailable"; error: string };
+
+export function buildMemoryCorpusWarning(outcome: MemoryCorpusOutcome): string | undefined {
+  if (outcome.outcome === "ok") {
+    return undefined;
+  }
+  const label = outcome.corpus === "memory" ? "Memory" : "Wiki";
+  return outcome.outcome === "not-registered"
+    ? `${label} corpus is not registered; results do not cover that requested corpus.`
+    : `${label} corpus unavailable: ${outcome.error}`;
+}
+
+export function supplementCorpusOutcome(
+  result:
+    | { outcome: "ok" }
+    | { outcome: "not-registered" }
+    | { outcome: "unavailable"; error: string },
+): MemoryCorpusOutcome {
+  if (result.outcome === "unavailable") {
+    return { corpus: "wiki", outcome: "unavailable", error: result.error };
+  }
+  return { corpus: "wiki", outcome: result.outcome };
+}
+
+type MemorySupplementFailure = { pluginId: string; error: string };
+
+function formatMemorySupplementFailures(failures: MemorySupplementFailure[]): string {
+  return failures.length === 1
+    ? failures[0]!.error
+    : failures.map((entry) => `${entry.pluginId}: ${entry.error}`).join("; ");
+}
+
 export async function searchMemoryCorpusSupplements(params: {
   query: string;
   maxResults?: number;
@@ -171,20 +229,35 @@ export async function searchMemoryCorpusSupplements(params: {
   agentSessionKey?: string;
   sandboxed?: boolean;
   corpus?: "memory" | "wiki" | "all" | "sessions";
-}): Promise<MemoryCorpusSearchResult[]> {
+  runSearch?: <T>(task: () => Promise<T>) => Promise<T>;
+}): Promise<MemorySupplementSearchOutcome> {
   if (params.corpus === "memory" || params.corpus === "sessions") {
-    return [];
+    return { outcome: "ok", results: [] };
   }
-  const supplements = listMemoryCorpusSupplements();
+  const supplements = listMemoryCorpusSupplements().toSorted((left, right) =>
+    left.pluginId.localeCompare(right.pluginId),
+  );
   if (supplements.length === 0) {
-    return [];
+    return { outcome: "not-registered", results: [] };
   }
-  const results = (
-    await Promise.all(
-      supplements.map(async (registration) => await registration.supplement.search(params)),
-    )
-  ).flat();
-  return results
+  const { runSearch, ...searchParams } = params;
+  const settled: Array<
+    { pluginId: string; results: MemoryCorpusSearchResult[] } | { pluginId: string; error: string }
+  > = await Promise.all(
+    supplements.map(async (registration) => {
+      try {
+        const search = async () => await registration.supplement.search(searchParams);
+        return {
+          pluginId: registration.pluginId,
+          results: runSearch ? await runSearch(search) : await search(),
+        };
+      } catch (error) {
+        return { pluginId: registration.pluginId, error: formatErrorMessage(error) };
+      }
+    }),
+  );
+  const results = settled
+    .flatMap((entry) => ("results" in entry ? entry.results : []))
     .toSorted((left, right) => {
       if (left.score !== right.score) {
         return right.score - left.score;
@@ -192,9 +265,14 @@ export async function searchMemoryCorpusSupplements(params: {
       return left.path.localeCompare(right.path);
     })
     .slice(0, Math.max(1, params.maxResults ?? 10));
+  const failures = settled.filter((entry): entry is MemorySupplementFailure => "error" in entry);
+  if (failures.length === 0) {
+    return { outcome: "ok", results };
+  }
+  return { outcome: "unavailable", results, error: formatMemorySupplementFailures(failures) };
 }
 
-export async function getMemoryCorpusSupplementResult(params: {
+export async function readMemoryCorpusSupplements(params: {
   lookup: string;
   fromLine?: number;
   lineCount?: number;
@@ -202,15 +280,43 @@ export async function getMemoryCorpusSupplementResult(params: {
   agentSessionKey?: string;
   sandboxed?: boolean;
   corpus?: "memory" | "wiki" | "all" | "sessions";
-}) {
+}): Promise<MemorySupplementReadOutcome> {
   if (params.corpus === "memory" || params.corpus === "sessions") {
-    return null;
+    return { outcome: "ok", result: null };
   }
-  for (const registration of listMemoryCorpusSupplements()) {
-    const result = await registration.supplement.get(params);
-    if (result) {
-      return result;
-    }
+  const supplements = listMemoryCorpusSupplements().toSorted((left, right) =>
+    left.pluginId.localeCompare(right.pluginId),
+  );
+  if (supplements.length === 0) {
+    return { outcome: "not-registered", result: null };
   }
-  return null;
+  const settled = await Promise.all(
+    supplements.map(async (registration) => {
+      try {
+        const result = await registration.supplement.get(params);
+        if (!result) {
+          return { pluginId: registration.pluginId, result: null };
+        }
+        const { content, ...rest } = result;
+        return { pluginId: registration.pluginId, result: { ...rest, text: content } };
+      } catch (error) {
+        return { pluginId: registration.pluginId, error: formatErrorMessage(error) };
+      }
+    }),
+  );
+  const result = settled.find(
+    (
+      entry,
+    ): entry is { pluginId: string; result: NonNullable<MemorySupplementReadOutcome["result"]> } =>
+      "result" in entry && entry.result !== null,
+  )?.result;
+  const failures = settled.filter((entry): entry is MemorySupplementFailure => "error" in entry);
+  if (failures.length === 0) {
+    return { outcome: "ok", result: result ?? null };
+  }
+  return {
+    outcome: "unavailable",
+    result: result ?? null,
+    error: formatMemorySupplementFailures(failures),
+  };
 }

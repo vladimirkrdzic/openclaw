@@ -1,6 +1,30 @@
 // Memory Host SDK tests cover read file shared behavior.
 import { describe, expect, it } from "vitest";
-import { buildMemoryReadResult, buildMemoryReadResultFromSlice } from "./read-file-shared.js";
+import {
+  buildMemoryReadResult,
+  buildMemoryReadResultFromSlice,
+  normalizeMemoryReadResult,
+} from "./read-file-shared.js";
+
+describe("normalizeMemoryReadResult", () => {
+  it("normalizes the shipped legacy bare-empty missing sentinel", () => {
+    expect(normalizeMemoryReadResult({ text: "", path: "memory/missing.md" })).toEqual({
+      status: "not_found",
+      text: "",
+      path: "memory/missing.md",
+    });
+  });
+
+  it("preserves an empty successful excerpt with range metadata", () => {
+    const result = { text: "", path: "memory/empty.md", from: 1, lines: 0 } as const;
+    expect(normalizeMemoryReadResult(result)).toBe(result);
+  });
+
+  it("preserves a non-empty successful excerpt", () => {
+    const result = { text: "remembered", path: "MEMORY.md", from: 1, lines: 1 } as const;
+    expect(normalizeMemoryReadResult(result)).toBe(result);
+  });
+});
 
 describe("memory read result slicing", () => {
   it.each([

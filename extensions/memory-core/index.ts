@@ -20,7 +20,12 @@ import { registerShortTermPromotionDreaming } from "./src/dreaming.js";
 import { buildMemoryFlushPlan } from "./src/flush-plan.js";
 import type { MemoryCoreAcquireLocalService } from "./src/memory/embedding-local-service.js";
 import type { MemoryCoreRuntimeHost } from "./src/memory/runtime-host.js";
-import { buildPromptSection } from "./src/prompt-section.js";
+import {
+  buildMemoryGetDescription,
+  buildMemorySearchDescription,
+  buildPromptSection,
+  resolveMemorySourceContract,
+} from "./src/prompt-section.js";
 import { registerSessionBackfillGatewayMethods } from "./src/session-backfill-gateway.js";
 
 type MemoryToolsModule = typeof import("./src/tools.js");
@@ -54,17 +59,22 @@ function getToolConfig(options: MemoryToolOptions): OpenClawConfig | undefined {
   return options.getConfig?.() ?? options.config;
 }
 
-function hasMemoryToolContext(options: MemoryToolOptions): boolean {
+function resolveMemoryToolAgentContext(options: MemoryToolOptions) {
   const cfg = getToolConfig(options);
   if (!cfg) {
-    return false;
+    return null;
   }
   const { sessionAgentId: agentId } = resolveSessionAgentIds({
     sessionKey: options.agentSessionKey,
     config: cfg,
     agentId: options.agentId,
   });
-  return Boolean(resolveMemorySearchConfig(cfg, agentId));
+  return { cfg, agentId };
+}
+
+function resolveMemoryToolContext(options: MemoryToolOptions) {
+  const context = resolveMemoryToolAgentContext(options);
+  return context && resolveMemorySearchConfig(context.cfg, context.agentId) ? context : null;
 }
 
 const MemorySearchSchema = {
@@ -95,11 +105,12 @@ function createLazyMemoryTool(params: {
   options: MemoryToolOptions;
   label: string;
   name: "memory_search" | "memory_get";
-  description: string;
+  description: (ctx: { cfg: OpenClawConfig; agentId: string }) => string;
   parameters: typeof MemorySearchSchema | typeof MemoryGetSchema;
   load: (module: MemoryToolsModule, options: MemoryToolOptions) => AnyAgentTool | null;
 }): AnyAgentTool | null {
-  if (!hasMemoryToolContext(params.options)) {
+  const initialContext = resolveMemoryToolContext(params.options);
+  if (!initialContext) {
     return null;
   }
 
@@ -112,7 +123,9 @@ function createLazyMemoryTool(params: {
   return {
     label: params.label,
     name: params.name,
-    description: params.description,
+    get description() {
+      return params.description(resolveMemoryToolAgentContext(params.options) ?? initialContext);
+    },
     parameters: params.parameters,
     execute: async (toolCallId, toolParams, signal, onUpdate) => {
       const tool = await loadTool();
@@ -133,8 +146,8 @@ function createLazyMemorySearchTool(options: MemoryToolOptions): AnyAgentTool | 
     options,
     label: "Memory Search",
     name: "memory_search",
-    description:
-      "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos. Optional `corpus=wiki` or `corpus=all` also searches registered compiled-wiki supplements. `corpus=memory` restricts hits to indexed memory files (excludes session transcript chunks from ranking). `corpus=sessions` restricts hits to indexed session transcripts (same visibility rules as session history tools). If response has disabled=true, memory retrieval is unavailable and should be surfaced to the user.",
+    description: ({ cfg, agentId }) =>
+      buildMemorySearchDescription(resolveMemorySourceContract(cfg, agentId)),
     parameters: MemorySearchSchema,
     load: (module, loadOptions) => module.createMemorySearchTool(loadOptions),
   });
@@ -145,8 +158,8 @@ function createLazyMemoryGetTool(options: MemoryToolOptions): AnyAgentTool | nul
     options,
     label: "Memory Get",
     name: "memory_get",
-    description:
-      "Safe exact excerpt read from MEMORY.md or memory/*.md. Defaults to a bounded excerpt when lines are omitted, includes truncation/continuation info when more content exists, and `corpus=wiki` reads from registered compiled-wiki supplements.",
+    description: ({ cfg, agentId }) =>
+      buildMemoryGetDescription(resolveMemorySourceContract(cfg, agentId)),
     parameters: MemoryGetSchema,
     load: (module, loadOptions) => module.createMemoryGetTool(loadOptions),
   });
@@ -288,7 +301,25 @@ export default definePluginEntry({
     registerShortTermPromotionDreaming(api);
     registerSessionBackfillGatewayMethods(api);
     api.registerMemoryCapability({
-      promptBuilder: buildPromptSection,
+      promptBuilder: (params) => {
+        if (
+          !params.availableTools.has("memory_search") &&
+          !params.availableTools.has("memory_get")
+        ) {
+          return [];
+        }
+        // SAFETY: memory source resolution reads config only; the runtime returns an immutable snapshot.
+        const cfg = (api.runtime.config?.current?.() ?? api.config) as OpenClawConfig;
+        const { sessionAgentId } = resolveSessionAgentIds({
+          sessionKey: params.agentSessionKey,
+          config: cfg,
+          agentId: params.agentId,
+        });
+        return buildPromptSection({
+          ...params,
+          sourceContract: resolveMemorySourceContract(cfg, sessionAgentId),
+        });
+      },
       flushPlanResolver: buildMemoryFlushPlan,
       runtime: memoryRuntime,
       publicArtifacts: {

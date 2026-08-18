@@ -73,7 +73,7 @@ describe("buildPromptSection", () => {
     expect(result[0]).toBe("## Memory Recall");
     expect(result[1]).toContain("run memory_search");
     expect(result[1]).toContain("then use memory_get");
-    expect(result[1]).toContain("indexed session transcripts");
+    expect(result[1]).toContain("MEMORY.md, USER.md, memory/*.md");
     expect(result).toContain(
       "Citations: include Source: <path#line> when it helps the user verify memory snippets.",
     );
@@ -84,7 +84,7 @@ describe("buildPromptSection", () => {
     const result = buildPromptSection({ availableTools: new Set(["memory_search"]) });
     expect(result[0]).toBe("## Memory Recall");
     expect(result[1]).toContain("run memory_search");
-    expect(result[1]).toContain("indexed session transcripts");
+    expect(result[1]).toContain("MEMORY.md, USER.md, memory/*.md");
     expect(result[1]).not.toContain("then use memory_get");
   });
 
@@ -104,11 +104,132 @@ describe("buildPromptSection", () => {
       "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks.",
     );
   });
+
+  it("keeps lazy tool and prompt guidance aligned with current resolved sources", () => {
+    let currentConfig = {
+      agents: {
+        list: [
+          {
+            id: "main",
+            default: true,
+            memory: { search: { sources: ["memory"] } },
+          },
+        ],
+      },
+      memory: {
+        search: {
+          provider: "none",
+          extraPaths: ["notes-z", "notes-a"],
+        },
+      },
+    } as OpenClawConfig;
+    const toolFactories = new Map<string, (ctx: unknown) => unknown>();
+    let promptBuilder:
+      | NonNullable<Parameters<OpenClawPluginApi["registerMemoryCapability"]>[0]["promptBuilder"]>
+      | undefined;
+    const runtime = {
+      ...hostRuntime,
+      config: { current: () => currentConfig },
+    } as OpenClawPluginApi["runtime"];
+    plugin.register(
+      createTestPluginApi({
+        config: currentConfig,
+        runtime,
+        registerMemoryCapability(capability) {
+          promptBuilder = capability.promptBuilder;
+        },
+        registerTool(factory, options) {
+          for (const name of options?.names ?? []) {
+            if (typeof factory === "function") {
+              toolFactories.set(name, factory as (ctx: unknown) => unknown);
+            }
+          }
+        },
+      }),
+    );
+
+    const context = {
+      agentId: "main",
+      config: currentConfig,
+      getRuntimeConfig: () => currentConfig,
+    };
+    const searchTool = toolFactories.get("memory_search")?.(context) as
+      | { description: string }
+      | undefined;
+    const getTool = toolFactories.get("memory_get")?.(context) as
+      | { description: string }
+      | undefined;
+    const initialPrompt = promptBuilder?.({
+      availableTools: new Set(["memory_search", "memory_get"]),
+      agentId: "main",
+    });
+    for (const text of [searchTool?.description, getTool?.description, initialPrompt?.join("\n")]) {
+      expect(text).toContain("MEMORY.md, USER.md, memory/*.md");
+      expect(text).toContain("configured extra paths (notes-a, notes-z)");
+    }
+    expect(searchTool?.description).not.toContain(
+      "configured extra paths (notes-a, notes-z), indexed session transcripts before answering",
+    );
+    expect(getTool?.description).not.toContain("indexed session transcripts");
+    expect(initialPrompt?.join("\n")).not.toContain("indexed session transcripts");
+    expect(getTool?.description).toContain("status=not_found");
+    expect(getTool?.description).toContain("every requested corpus that was available");
+    expect(getTool?.description).toContain("coverage is partial");
+    expect(initialPrompt?.join("\n")).toContain("status=not_found");
+    expect(initialPrompt?.join("\n")).toContain("every requested corpus that was available");
+    expect(initialPrompt?.join("\n")).toContain("coverage is partial");
+
+    currentConfig = {
+      ...currentConfig,
+      agents: {
+        list: [
+          {
+            id: "main",
+            default: true,
+            memory: {
+              search: {
+                sources: ["memory", "sessions"],
+                experimental: { sessionMemory: true },
+              },
+            },
+          },
+        ],
+      },
+    } as OpenClawConfig;
+    expect(searchTool?.description).toContain("indexed session transcripts");
+    expect(getTool?.description).not.toContain("indexed session transcripts");
+    expect(
+      promptBuilder?.({
+        availableTools: new Set(["memory_search", "memory_get"]),
+        agentId: "main",
+      }).join("\n"),
+    ).toContain("indexed session transcripts");
+  });
 });
 
 describe("memory-core plugin runtime registration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("does not resolve prompt config when no memory tools are available", () => {
+    let promptBuilder:
+      | NonNullable<Parameters<OpenClawPluginApi["registerMemoryCapability"]>[0]["promptBuilder"]>
+      | undefined;
+    const current = vi.fn(() => {
+      throw new Error("runtime config must remain lazy");
+    });
+    plugin.register(
+      createTestPluginApi({
+        runtime: { ...hostRuntime, config: { ...hostRuntime.config, current } },
+        registerMemoryCapability(capability) {
+          promptBuilder = capability.promptBuilder;
+        },
+      }),
+    );
+
+    expect(promptBuilder?.({ availableTools: new Set() })).toStrictEqual([]);
+    expect(current).not.toHaveBeenCalled();
   });
 
   it("registers the dreaming runtime slash command", () => {

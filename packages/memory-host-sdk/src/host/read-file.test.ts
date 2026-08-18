@@ -37,6 +37,7 @@ describe("readMemoryFile", () => {
       expect(result).toEqual({
         text: "",
         path: path.relative(workspaceDir, missingPath).replace(/\\/g, "/"),
+        status: "not_found",
       });
 
       const nonDirectoryParentPath = path.join(extraDir, "note.md", "child.md");

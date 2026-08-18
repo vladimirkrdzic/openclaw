@@ -34,14 +34,14 @@ describe("MemoryIndexManager.readFile", () => {
     await fs.rm(workspaceDir, { recursive: true, force: true });
   });
 
-  it("returns empty text when the requested file does not exist", async () => {
+  it("returns an explicit not-found outcome when the requested file does not exist", async () => {
     const relPath = "memory/2099-01-01.md";
     const result = await readMemoryFile({
       workspaceDir,
       extraPaths: [],
       relPath,
     });
-    expect(result).toEqual({ text: "", path: relPath });
+    expect(result).toEqual({ text: "", path: relPath, status: "not_found" });
   });
 
   it("returns content slices when the file exists", async () => {
@@ -241,7 +241,7 @@ describe("MemoryIndexManager.readFile", () => {
     });
   });
 
-  it("returns empty text when the file disappears after stat", async () => {
+  it("returns an explicit not-found outcome when the file disappears after stat", async () => {
     const relPath = "memory/transient.md";
     const absPath = path.join(workspaceDir, relPath);
     await fs.mkdir(path.dirname(absPath), { recursive: true });
@@ -268,7 +268,7 @@ describe("MemoryIndexManager.readFile", () => {
         extraPaths: [],
         relPath,
       });
-      expect(result).toEqual({ text: "", path: relPath });
+      expect(result).toEqual({ text: "", path: relPath, status: "not_found" });
     } finally {
       openSpy.mockRestore();
     }
