@@ -12,7 +12,7 @@ import {
   uniqueStrings,
 } from "@openclaw/normalization-core/string-normalization";
 import type { AuthProfileCredential } from "../agents/auth-profiles/types.js";
-import { upsertAuthProfileWithLock } from "../agents/auth-profiles/upsert-with-lock.js";
+import { upsertAuthProfileAfterLoginWithLock } from "../agents/auth-profiles/upsert-with-lock.js";
 import { CUSTOM_LOCAL_AUTH_MARKER, isNonSecretApiKeyMarker } from "../agents/model-auth-markers.js";
 import { parseConfiguredModelVisibilityEntries } from "../agents/model-selection-shared.js";
 import {
@@ -591,7 +591,7 @@ export async function configureOpenAICompatibleSelfHostedProviderNonInteractive(
     if (!credential) {
       return null;
     }
-    await upsertAuthProfileWithLock({
+    await upsertAuthProfileAfterLoginWithLock({
       profileId: configured.profileId,
       credential,
       agentDir: params.ctx.agentDir,

@@ -39,6 +39,7 @@ import { resolveSharedAuthStorePath as resolveSharedAuthPath } from "./path-reso
 import {
   buildPersistedAuthProfileSecretsStore,
   loadPersistedAuthProfileStore,
+  loadPersistedSharedAuthProfileStore,
   mergeAuthProfileStores,
 } from "./persisted.js";
 import {
@@ -1221,6 +1222,7 @@ export function findPersistedAuthProfileCredential(params: {
 export function resolvePersistedAuthProfileOwnerAgentDir(params: {
   agentDir?: string;
   profileId: string;
+  stateDir?: string;
 }): string | undefined {
   if (isEnvOnlyAuthProfileRuntime()) {
     return undefined;
@@ -1232,12 +1234,19 @@ export function resolvePersistedAuthProfileOwnerAgentDir(params: {
   const requestedStore = loadPersistedAuthProfileStore(agentDir);
   const requestedPath = resolveAgentAuthPath(agentDir);
   const mainAgentDir = resolveRuntimeAuthProfileAgentDir();
-  const mainPath = mainAgentDir ? resolveAgentAuthPath(mainAgentDir) : resolveSharedAuthPath();
+  const sharedEnv = params.stateDir
+    ? { ...process.env, OPENCLAW_STATE_DIR: params.stateDir }
+    : process.env;
+  const mainPath = mainAgentDir
+    ? resolveAgentAuthPath(mainAgentDir)
+    : resolveSharedAuthPath(sharedEnv);
   if (requestedPath === mainPath) {
     return undefined;
   }
 
-  const mainStore = loadPersistedAuthProfileStore(mainAgentDir);
+  const mainStore = mainAgentDir
+    ? loadPersistedAuthProfileStore(mainAgentDir)
+    : loadPersistedSharedAuthProfileStore(sharedEnv);
   const requestedProfile = requestedStore?.profiles[params.profileId];
   if (requestedProfile) {
     return shouldUseMainOwnerForLocalOAuthCredential({
