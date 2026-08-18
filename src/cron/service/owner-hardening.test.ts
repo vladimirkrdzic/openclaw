@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { createTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import {
   openOpenClawStateDatabase,
   runOpenClawStateWriteTransaction,
@@ -34,7 +34,7 @@ const { makeStorePath } = createCronStoreHarness({ prefix: "cron-owner-hardening
 const children = new Set<ChildProcess>();
 let scriptRoot = "";
 let runnerScript = "";
-const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+const tempDirs = createTempDirTracker();
 
 beforeEach(async () => {
   scriptRoot = tempDirs.make("cron-owner-hardening-script-", os.tmpdir());
@@ -113,12 +113,15 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  for (const child of children) {
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill("SIGKILL");
-    }
+  const activeChildren = [...children].filter(
+    (child) => child.exitCode === null && child.signalCode === null,
+  );
+  for (const child of activeChildren) {
+    child.kill("SIGKILL");
   }
+  await Promise.all(activeChildren.map(waitForExit));
   children.clear();
+  tempDirs.cleanup();
 });
 
 function makeCommandJob(id: string, nextRunAtMs: number, trigger = false): CronJob {
@@ -175,24 +178,29 @@ function spawnRunner(params: {
   return child;
 }
 
+// Wait on the child protocol itself; cold TypeScript imports are not part of
+// the cron ownership contract this fixture exercises.
 async function waitForLine(child: ChildProcess, expected: string): Promise<void> {
   let stdout = "";
   let stderr = "";
-  child.stdout?.on("data", (chunk) => {
-    stdout += String(chunk);
-  });
-  child.stderr?.on("data", (chunk) => {
+  const onStderr = (chunk: unknown) => {
     stderr += String(chunk);
-  });
-  await vi.waitFor(
-    () => {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        throw new Error(`cron child exited before ${expected}: ${stderr || stdout}`);
+  };
+  if (!child.stdout) {
+    throw new Error(`cron child has no stdout while waiting for ${expected}`);
+  }
+  child.stderr?.on("data", onStderr);
+  try {
+    for await (const chunk of child.stdout.iterator({ destroyOnReturn: false })) {
+      stdout += String(chunk);
+      if (stdout.split("\n").includes(expected)) {
+        return;
       }
-      expect(stdout.split("\n")).toContain(expected);
-    },
-    { timeout: 10_000, interval: 20 },
-  );
+    }
+    throw new Error(`cron child exited before ${expected}: ${stderr || stdout}`);
+  } finally {
+    child.stderr?.off("data", onStderr);
+  }
 }
 
 async function waitForExit(child: ChildProcess): Promise<void> {
