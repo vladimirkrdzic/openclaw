@@ -115,6 +115,9 @@ function renderState(state: RunInspectorState, onLoadMoreExecutions = vi.fn()) {
     renderRunInspector({
       basePath: "/operator",
       state,
+      selector: { kind: "execution", id: "execution-1" },
+      receiptId: null,
+      onLoadMoreDecisions: vi.fn(),
       onLoadMoreExecutions,
       onRetry: vi.fn(),
     }),
@@ -129,7 +132,14 @@ describe("renderRunInspector", () => {
   });
 
   it("renders every identity dimension with explicit text states and safe refs", () => {
-    const container = renderState({ status: "ready", result: presentResult() });
+    const result = presentResult();
+    const container = renderState({
+      status: "ready",
+      result,
+      receiptPageCursors: new Map(
+        result.decisions.map((receipt) => [receipt.receiptId, undefined]),
+      ),
+    });
 
     expect(container.querySelector('[role="status"]')?.getAttribute("aria-label")).toBe(
       "Inspection coverage: Unattributed",
@@ -159,6 +169,13 @@ describe("renderRunInspector", () => {
     expect(text).not.toContain("context-1");
     expect(text).not.toContain("execution-1");
     expect(text).toContain("Additional decision receipts are available");
+    expect(text).toContain("Run admission was recorded without identity-aware evaluation.");
+    expect(text).toContain("Not applicable");
+    expect(text).toContain("Unattributed");
+    expect(text).toContain("identity_not_evaluated");
+    expect(text).toContain("Durable record owner");
+    expect(text).toContain("agent-command");
+    expect(text).toContain("Do not treat this as authorization.");
     expect(text).toContain("Best-effort audit warning");
     expect(text).not.toContain("raw-sender-id-42");
     expect(
@@ -198,7 +215,9 @@ describe("renderRunInspector", () => {
       "Identity evidence unsupported",
     ],
   ])("renders the Gateway's typed diagnostic state", (result, expected) => {
-    expect(renderState({ status: "ready", result }).textContent).toContain(expected);
+    expect(
+      renderState({ status: "ready", result, receiptPageCursors: new Map() }).textContent,
+    ).toContain(expected);
   });
 
   it("links an ambiguous run candidate to exact execution inspection", () => {
@@ -220,7 +239,10 @@ describe("renderRunInspector", () => {
     };
 
     const onLoadMoreExecutions = vi.fn();
-    const container = renderState({ status: "ready", result }, onLoadMoreExecutions);
+    const container = renderState(
+      { status: "ready", result, receiptPageCursors: new Map() },
+      onLoadMoreExecutions,
+    );
     const link = container.querySelector<HTMLAnchorElement>('a[href*="execution="]');
     expect(link?.textContent).toContain("execution:a/b");
     expect(link?.getAttribute("href")).toBe(
@@ -232,13 +254,132 @@ describe("renderRunInspector", () => {
     loadMore?.click();
     expect(onLoadMoreExecutions).toHaveBeenCalledOnce();
 
-    const loading = renderState({ status: "ready", result, executionPageStatus: "loading" });
+    const loading = renderState({
+      status: "ready",
+      result,
+      executionPageStatus: "loading",
+      receiptPageCursors: new Map(),
+    });
     expect(loading.querySelector("button")?.disabled).toBe(true);
     expect(loading.textContent).toContain("Loading executions…");
 
-    const failed = renderState({ status: "ready", result, executionPageStatus: "error" });
+    const failed = renderState({
+      status: "ready",
+      result,
+      executionPageStatus: "error",
+      receiptPageCursors: new Map(),
+    });
     expect(failed.querySelector('[role="alert"]')?.textContent).toContain(
       "More executions could not be loaded",
     );
+  });
+
+  it("deep-links a receipt page without exposing receipt or source identifiers as text", () => {
+    const result = presentResult();
+    const receipt = result.decisions[0]!;
+    receipt.action.resourceRef = "raw-resource-id";
+    receipt.action.targetRef = "raw-target-id";
+    receipt.actionId = "raw-action-id";
+    receipt.enforcement.evaluatorRef = "raw-evaluator-id";
+    receipt.enforcement.policyRefs = ["raw-policy-id"];
+    receipt.enforcement.grantRefs = ["raw-grant-id"];
+    receipt.source.recordRef = "raw-record-id";
+    Object.assign(receipt, {
+      command: "rm -rf /private/path",
+      arguments: { token: "credential-value" },
+      payload: "raw-payload",
+    });
+    const onLoadMoreDecisions = vi.fn();
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(
+      renderRunInspector({
+        basePath: "/operator",
+        state: {
+          status: "ready",
+          result,
+          receiptPageCursors: new Map([[receipt.receiptId, "a:10:2"]]),
+        },
+        selector: { kind: "execution", id: "execution-1" },
+        receiptId: receipt.receiptId,
+        onLoadMoreDecisions,
+        onLoadMoreExecutions: vi.fn(),
+        onRetry: vi.fn(),
+      }),
+      container,
+    );
+
+    const receiptLink = container.querySelector<HTMLAnchorElement>(
+      '.run-inspector__receipt-list a[aria-current="true"]',
+    );
+    expect(receiptLink?.getAttribute("href")).toBe(
+      "/operator/activity?view=run&execution=execution-1&receipt=receipt-1&decision=a%3A10%3A2",
+    );
+    const text = container.textContent ?? "";
+    for (const hidden of [
+      "receipt-1",
+      "context-1",
+      "execution-1",
+      "raw-resource-id",
+      "raw-target-id",
+      "raw-action-id",
+      "raw-evaluator-id",
+      "raw-policy-id",
+      "raw-grant-id",
+      "raw-record-id",
+      "rm -rf",
+      "/private/path",
+      "credential-value",
+      "raw-payload",
+    ]) {
+      expect(text).not.toContain(hidden);
+    }
+    const receiptValues = [
+      ...container.querySelectorAll(".run-inspector__receipt-detail dl > div"),
+    ];
+    const countFor = (label: string) =>
+      receiptValues
+        .find((row) => row.querySelector("dt")?.textContent === label)
+        ?.querySelector("dd")?.textContent;
+    expect(countFor("Policy references used")).toBe("1");
+    expect(countFor("Grant references used")).toBe("1");
+
+    const loadMore = [...container.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Load more receipts"),
+    );
+    loadMore?.click();
+    expect(onLoadMoreDecisions).toHaveBeenCalledOnce();
+  });
+
+  it("renders receipt selection and pagination failures as explicit non-destructive states", () => {
+    const result = presentResult();
+    const notFound = renderState({
+      status: "ready",
+      result,
+      receiptPageCursors: new Map(),
+      decisionPageStatus: "error",
+    });
+    render(
+      renderRunInspector({
+        basePath: "/operator",
+        state: {
+          status: "ready",
+          result,
+          receiptPageCursors: new Map(),
+          decisionPageStatus: "error",
+        },
+        selector: { kind: "execution", id: "execution-1" },
+        receiptId: "missing-receipt",
+        onLoadMoreDecisions: vi.fn(),
+        onLoadMoreExecutions: vi.fn(),
+        onRetry: vi.fn(),
+      }),
+      notFound,
+    );
+    expect(notFound.textContent).toContain("Receipt not found on this page");
+    expect(notFound.querySelector('[role="alert"]')?.textContent).toContain(
+      "More receipts could not be loaded",
+    );
+    expect(notFound.textContent).not.toContain("missing-receipt");
   });
 });

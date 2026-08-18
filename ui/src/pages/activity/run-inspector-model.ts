@@ -1,4 +1,7 @@
-import type { AuditRunInspectResult } from "../../../../packages/gateway-protocol/src/schema/audit-run.js";
+import type {
+  AuditRunInspectResult,
+  DecisionReceiptV1,
+} from "../../../../packages/gateway-protocol/src/schema/audit-run.js";
 import { pathForRoute } from "../../app-route-paths.ts";
 import { parseSessionActivityFilters, type SessionActivityFilters } from "./session-activity.ts";
 
@@ -7,7 +10,12 @@ export type RunInspectorSelector = { kind: "run" | "execution"; id: string };
 export type ActivityRouteData =
   | { mode: "sessions"; filters: SessionActivityFilters; selector: null }
   | { mode: "live"; selector: null }
-  | { mode: "run"; selector: RunInspectorSelector | null };
+  | {
+      mode: "run";
+      selector: RunInspectorSelector | null;
+      receiptId: string | null;
+      decisionCursor: string | null;
+    };
 
 export function activityRunInspectorHref(runId: string, basePath: string): string {
   return `${pathForRoute("activity", basePath)}?view=run&run=${encodeURIComponent(runId)}`;
@@ -22,15 +30,26 @@ export function resolveActivityRouteData(search: string): ActivityRouteData {
     return { mode: "sessions", filters: parseSessionActivityFilters(search), selector: null };
   }
   const executionId = params.get("execution");
+  const receiptId = params.get("receipt")?.trim() || null;
+  const decisionCursor = receiptId ? params.get("decision")?.trim() || null : null;
   if (executionId?.trim()) {
-    return { mode: "run", selector: { kind: "execution", id: executionId } };
+    return {
+      mode: "run",
+      selector: { kind: "execution", id: executionId },
+      receiptId,
+      decisionCursor,
+    };
   }
   const runId = params.get("run");
   return {
     mode: "run",
     selector: runId?.trim() ? { kind: "run", id: runId } : null,
+    receiptId,
+    decisionCursor,
   };
 }
+
+type ReceiptPageCursorMap = ReadonlyMap<string, string | undefined>;
 
 export type RunInspectorState =
   | { status: "empty" }
@@ -43,7 +62,38 @@ export type RunInspectorState =
       status: "ready";
       result: AuditRunInspectResult;
       executionPageStatus?: "loading" | "error";
+      decisionPageStatus?: "loading" | "error";
+      receiptPageCursors: ReceiptPageCursorMap;
     };
+
+export function receiptPageCursors(
+  receipts: readonly DecisionReceiptV1[],
+  cursor?: string,
+): ReceiptPageCursorMap {
+  return new Map(receipts.map((receipt) => [receipt.receiptId, cursor]));
+}
+
+export function mergeDecisionPage(
+  previous: AuditRunInspectResult,
+  page: AuditRunInspectResult,
+): AuditRunInspectResult | null {
+  if (
+    previous.identity.state !== "present" ||
+    page.identity.state !== "present" ||
+    previous.run.executionId !== page.run.executionId ||
+    previous.identity.context.contextId !== page.identity.context.contextId
+  ) {
+    return null;
+  }
+  const decisions = new Map(previous.decisions.map((receipt) => [receipt.receiptId, receipt]));
+  for (const receipt of page.decisions) {
+    decisions.set(receipt.receiptId, receipt);
+  }
+  return {
+    ...page,
+    decisions: [...decisions.values()],
+  };
+}
 
 type RunInspectorDiagnosticKind =
   | "present"

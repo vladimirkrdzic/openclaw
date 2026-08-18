@@ -7,7 +7,19 @@ import type {
 import { pathForRoute } from "../../app-route-paths.ts";
 import { t } from "../../i18n/index.ts";
 import { registerActivityEnglish } from "../../i18n/locales/en-activity.ts";
-import { classifyRunInspection, type RunInspectorState } from "./run-inspector-model.ts";
+import {
+  classifyRunInspection,
+  type RunInspectorSelector,
+  type RunInspectorState,
+} from "./run-inspector-model.ts";
+import {
+  coverageKey,
+  coverageLabel,
+  renderDecisions,
+  renderMissingEvidence,
+  renderRemediation,
+  renderSafeRef,
+} from "./run-inspector-receipts.ts";
 import "./run-inspector.css";
 
 registerActivityEnglish();
@@ -17,6 +29,9 @@ type EvidenceState = "present" | "absent" | "unknown" | "unsupported";
 type RunInspectorProps = {
   basePath: string;
   state: RunInspectorState;
+  selector: RunInspectorSelector | null;
+  receiptId: string | null;
+  onLoadMoreDecisions: () => void;
   onLoadMoreExecutions: () => void;
   onRetry: () => void;
 };
@@ -37,25 +52,6 @@ type IdentityFact = {
 
 function evidenceStateLabel(state: EvidenceState): string {
   return t(`activity.runInspector.evidenceState.${state}`);
-}
-
-function coverageKey(
-  state: AuditRunInspectResult["coverage"]["state"],
-): "enforced" | "attributionOnly" | "unattributed" | "unknown" | "unsupported" {
-  return state === "attribution-only" ? "attributionOnly" : state;
-}
-
-function coverageLabel(state: AuditRunInspectResult["coverage"]["state"]): string {
-  return t(`activity.runInspector.coverage.${coverageKey(state)}.label`);
-}
-
-function renderSafeRef(value: string | number, mono = false, href?: string) {
-  const content = html`<bdi
-    class=${mono ? "run-inspector__ref mono" : "run-inspector__ref"}
-    dir="ltr"
-    >${value}</bdi
-  >`;
-  return href ? html`<a href=${href}>${content}</a>` : content;
 }
 
 function stateReason(label: string, state: EvidenceState): string | undefined {
@@ -338,64 +334,6 @@ function identityFacts(context: ExecutionIdentityContextV1, basePath: string): I
   ];
 }
 
-function renderMissingEvidence(values: readonly string[]) {
-  return html`
-    <section class="run-inspector__section" aria-labelledby="run-inspector-missing-heading">
-      <h3 id="run-inspector-missing-heading">
-        ${t("activity.runInspector.missingEvidenceHeading")}
-      </h3>
-      ${values.length === 0
-        ? html`<p>${t("activity.runInspector.noMissingEvidence")}</p>`
-        : html`<ul class="run-inspector__code-list">
-            ${values.map((value) => html`<li>${renderSafeRef(value, true)}</li>`)}
-          </ul>`}
-    </section>
-  `;
-}
-
-function renderRemediation(
-  remediation: readonly { code: string; text: string }[],
-): TemplateResult | typeof nothing {
-  if (remediation.length === 0) {
-    return nothing;
-  }
-  return html`
-    <section
-      class="run-inspector__section"
-      aria-label=${t("activity.runInspector.nextStepsHeading")}
-    >
-      <h3>${t("activity.runInspector.nextStepsHeading")}</h3>
-      <ul class="run-inspector__remediation-list">
-        ${remediation.map(
-          (item) => html`<li><span>${item.text}</span> ${renderSafeRef(item.code, true)}</li>`,
-        )}
-      </ul>
-    </section>
-  `;
-}
-
-function renderDecisions(result: AuditRunInspectResult) {
-  return html`
-    <section class="run-inspector__section" aria-labelledby="run-inspector-decisions-heading">
-      <h3 id="run-inspector-decisions-heading">${t("activity.runInspector.decisions.heading")}</h3>
-      ${result.decisions.length === 0
-        ? html`<p>${t("activity.runInspector.decisions.none")}</p>`
-        : html`<p>
-            ${t("activity.runInspector.decisions.returned", {
-              count: String(result.decisions.length),
-            })}
-          </p>`}
-      ${result.nextDecisionCursor
-        ? html`<div class="run-inspector__pagination" role="note">
-            ${t("activity.runInspector.decisions.more")}
-          </div>`
-        : html`<div class="run-inspector__pagination" role="note">
-            ${t("activity.runInspector.decisions.bounded")}
-          </div>`}
-    </section>
-  `;
-}
-
 function diagnosticCopy(result: AuditRunInspectResult) {
   const kind = classifyRunInspection(result);
   switch (kind) {
@@ -506,6 +444,9 @@ function renderUnavailableResult(
 function renderReady(
   state: Extract<RunInspectorState, { status: "ready" }>,
   basePath: string,
+  selector: RunInspectorSelector | null,
+  receiptId: string | null,
+  onLoadMoreDecisions: () => void,
   onLoadMoreExecutions: () => void,
 ) {
   const result = state.result;
@@ -533,7 +474,8 @@ function renderReady(
               ${identityFacts(result.identity.context, basePath).map(renderFact)}
             </dl>
           </section>
-          ${renderMissingEvidence(result.coverage.missingEvidence)} ${renderDecisions(result)}
+          ${renderMissingEvidence(result.coverage.missingEvidence)}
+          ${renderDecisions(state, selector, receiptId, basePath, onLoadMoreDecisions)}
         `
       : renderUnavailableResult(result, basePath, state.executionPageStatus, onLoadMoreExecutions)}
   `;
@@ -608,7 +550,14 @@ export function renderRunInspector(props: RunInspectorProps) {
       );
       break;
     case "ready":
-      content = renderReady(state, props.basePath, props.onLoadMoreExecutions);
+      content = renderReady(
+        state,
+        props.basePath,
+        props.selector,
+        props.receiptId,
+        props.onLoadMoreDecisions,
+        props.onLoadMoreExecutions,
+      );
       break;
   }
 
