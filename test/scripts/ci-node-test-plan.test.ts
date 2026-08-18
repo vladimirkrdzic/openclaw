@@ -383,6 +383,9 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
         .filter((group) => group.shard_name.startsWith("agentic-control-plane-agent-chat-hosted-"));
       expect(agentChatStripes).toHaveLength(2);
       expect(
+        agentChatStripes.every((group) => group.env?.OPENCLAW_VITEST_MAX_WORKERS === "2"),
+      ).toBe(true);
+      expect(
         agentChatStripes.every(
           (group) =>
             !group.includePatterns?.includes(
@@ -580,6 +583,11 @@ describe("scripts/lib/ci-node-test-plan.mts", () => {
       compact
         .flatMap((shard) => shard.groups)
         .find((group) => group.shard_name === "core-runtime-media-ui-support")?.env,
+    ).toEqual({ OPENCLAW_VITEST_MAX_WORKERS: "2" });
+    expect(
+      compact
+        .flatMap((shard) => shard.groups)
+        .find((group) => group.shard_name === "agentic-control-plane-agent-chat")?.env,
     ).toEqual({ OPENCLAW_VITEST_MAX_WORKERS: "2" });
     const startupCoreJob = compact.find((shard) =>
       shard.groups.some((group) => group.shard_name === "agentic-control-plane-startup-core"),

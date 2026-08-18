@@ -625,9 +625,10 @@ function isExclusiveCompactGroup(group: NodeTestShardGroup): boolean {
 // Spawn/signal/PTY-timing suites also flake under high in-process worker
 // counts; pin them to the proven 2-worker budget while the job-level default
 // scales with the runner class. infra-process spawns child processes per test
-// and hit worker-startup timeouts under contention before serialization.
+// and hit worker-startup timeouts under contention before serialization. The
+// shared agent-chat Gateway server similarly loses WebSocket deadlines at 3.
 const PINNED_WORKER_COMPACT_GROUP_RE =
-  /^core-tooling(?:-\d+(?:-hosted-\d+)?|-isolated)$|^core-runtime-tui-pty$|^core-runtime-infra-process$|^core-runtime-config$|^core-runtime-media-ui-(?:\d+|support)$|^agentic-cli(?:-process)?$|^agentic-gateway-(?:core-\d+|methods)$/u;
+  /^core-tooling(?:-\d+(?:-hosted-\d+)?|-isolated)$|^core-runtime-tui-pty$|^core-runtime-infra-process$|^core-runtime-config$|^core-runtime-media-ui-(?:\d+|support)$|^agentic-cli(?:-process)?$|^agentic-gateway-(?:core-\d+|methods)$|^agentic-control-plane-agent-chat$/u;
 const PINNED_COMPACT_GROUP_ENV = { OPENCLAW_VITEST_MAX_WORKERS: "2" };
 
 function applyCompactGroupWorkerPins(group: NodeTestShardGroup): NodeTestShardGroup {
