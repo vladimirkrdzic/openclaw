@@ -39,6 +39,7 @@ import type { PluginRegistryState } from "./registry-state.js";
 import type { PluginRecord } from "./registry-types.js";
 import {
   withPluginRuntimePluginIdScope,
+  withPluginRuntimeNativeActionEvidence,
   withPluginRuntimePluginScope,
 } from "./runtime/gateway-request-scope.js";
 import type { PluginRuntime } from "./runtime/types.js";
@@ -467,7 +468,7 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
     };
     const resolveRunSessionExecutionOwner = (
       params: Parameters<PluginRuntime["agent"]["runEmbeddedAgent"]>[0],
-    ): string | undefined => {
+    ): { ownerPluginId?: string; nativeActionEvidence: "callback" | "unsupported" } => {
       const target = params.sessionTarget;
       const targetSessionKey = normalizeOptionalString(target?.sessionKey);
       const directSessionKey = normalizeOptionalString(params.sessionKey);
@@ -565,7 +566,10 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
             `Plugin "${pluginId}" may execute locked session "${sessionKey}" only with its exact persisted identity and harness.`,
           );
         }
-        return ownerPluginId;
+        return {
+          ownerPluginId,
+          nativeActionEvidence: entry.acpSessionBinding ? "unsupported" : "callback",
+        };
       }
       assertSessionIdentitiesOwned({
         action: "run",
@@ -575,7 +579,9 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
         sessionKeys: [target?.sessionKey ?? params.sessionKey],
         storePath: ownershipStorePath,
       });
-      return undefined;
+      return {
+        nativeActionEvidence: entry?.acpSessionBinding ? "unsupported" : "callback",
+      };
     };
     const assertGatewaySessionRequestOwned = (
       method: string,
@@ -952,13 +958,20 @@ export function createPluginRuntimeResolver(state: PluginRegistryState) {
           const runEmbeddedAgent: PluginRuntime["agent"]["runEmbeddedAgent"] = async (params) => {
             const runParams = { ...params, skillWorkshopCollectionReconcile: undefined };
             return await runWithPluginScope(async () => {
-              const ownerPluginId = resolveRunSessionExecutionOwner(runParams);
-              if (ownerPluginId) {
-                return await resolvePluginRuntime(ownerPluginId).agent.runEmbeddedAgent(runParams);
-              }
-              // The public runtime adapter owns admission preparation. Passing
-              // host authority through this plugin wrapper is rejected by design.
-              return await agent.runEmbeddedAgent(runParams);
+              const executionOwner = resolveRunSessionExecutionOwner(runParams);
+              return await withPluginRuntimeNativeActionEvidence(
+                executionOwner.nativeActionEvidence,
+                async () => {
+                  if (executionOwner.ownerPluginId) {
+                    return await resolvePluginRuntime(
+                      executionOwner.ownerPluginId,
+                    ).agent.runEmbeddedAgent(runParams);
+                  }
+                  // The public runtime adapter owns admission preparation. Passing
+                  // host authority through this plugin wrapper is rejected by design.
+                  return await agent.runEmbeddedAgent(runParams);
+                },
+              );
             });
           };
           const scopedAgent = Object.create(
