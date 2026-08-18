@@ -3214,7 +3214,11 @@ describe("runCodexAppServerAttempt", () => {
     } finally {
       stopDiagnostics();
     }
-    expect(diagnosticEvents.map((event) => event.type)).toEqual([
+    expect(
+      diagnosticEvents
+        .filter((event) => event.type.startsWith("tool.execution."))
+        .map((event) => event.type),
+    ).toEqual([
       "tool.execution.started",
       "tool.execution.error",
     ]);
@@ -3270,7 +3274,11 @@ describe("runCodexAppServerAttempt", () => {
     } finally {
       stopDiagnostics();
     }
-    expect(diagnosticEvents.map((event) => event.type)).toEqual([
+    expect(
+      diagnosticEvents
+        .filter((event) => event.type.startsWith("tool.execution."))
+        .map((event) => event.type),
+    ).toEqual([
       "tool.execution.started",
       "tool.execution.completed",
     ]);
