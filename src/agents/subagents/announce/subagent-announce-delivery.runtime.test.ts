@@ -69,4 +69,58 @@ describe("subagent announce Gateway instance dispatch", () => {
       ),
     ).resolves.toEqual({ runId: "announce-run", status: "ok", summary: "delivered" });
   });
+
+  it("uses the retained Gateway instance and rejects its stale resolver", async () => {
+    const idempotencyKey = "instance-bound-subagent-announce";
+    const firstContext = createContext();
+    const secondContext = createContext();
+    firstContext.dedupe.set(`agent:${idempotencyKey}`, {
+      ts: Date.now(),
+      ok: true,
+      payload: { runId: "first-run", status: "ok", summary: "first" },
+    });
+    secondContext.dedupe.set(`agent:${idempotencyKey}`, {
+      ts: Date.now(),
+      ok: true,
+      payload: { runId: "second-run", status: "ok", summary: "second" },
+    });
+    const registry = createRegistry({
+      agent: ({ respond }) => respond(true, { raw: true }),
+    });
+    const first = createGatewayInstanceRuntime({
+      getContext: () => firstContext,
+      getMethodRegistry: () => registry,
+      isDispatchAvailable: () => true,
+    });
+    const second = createGatewayInstanceRuntime({
+      getContext: () => secondContext,
+      getMethodRegistry: () => registry,
+      isDispatchAvailable: () => true,
+    });
+    firstContext.recoveryRuntime = first.recovery;
+    secondContext.recoveryRuntime = second.recovery;
+    const resolveFirst = () => (first.isAvailable() ? firstContext : undefined);
+
+    try {
+      await expect(
+        dispatchSubagentAnnounceAgent(
+          { message: "Process one completed child result.", idempotencyKey },
+          { expectFinal: true, forceSyntheticClient: true, resolveGatewayContext: resolveFirst },
+        ),
+      ).resolves.toEqual({ runId: "first-run", status: "ok", summary: "first" });
+
+      first.close();
+      await expect(
+        dispatchSubagentAnnounceAgent(
+          { message: "Process one completed child result.", idempotencyKey },
+          { expectFinal: true, forceSyntheticClient: true, resolveGatewayContext: resolveFirst },
+        ),
+      ).rejects.toThrow("Gateway instance lifecycle dispatch unavailable for agent");
+    } finally {
+      if (first.isAvailable()) {
+        first.close();
+      }
+      second.close();
+    }
+  });
 });
