@@ -14,7 +14,7 @@ export function createOverflowFadeRef() {
     target.toggleAttribute("data-overflow-reveal", revealDistance > 1);
     const direction = getComputedStyle(target).direction === "rtl" ? 1 : -1;
     target.style.setProperty("--overflow-reveal-translate", `${direction * revealDistance}px`);
-    const revealDuration = Math.min(1_600, Math.max(900, revealDistance * 10));
+    const revealDuration = Math.min(8_000, Math.max(1_200, revealDistance * 16));
     target.style.setProperty("--overflow-reveal-duration", `${revealDuration}ms`);
   };
 

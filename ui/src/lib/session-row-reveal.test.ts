@@ -42,7 +42,7 @@ describe("session row reveal", () => {
 
     expect(title.hasAttribute("data-overflow-reveal")).toBe(true);
     expect(title.style.getPropertyValue("--overflow-reveal-translate")).toBe("-140px");
-    expect(title.style.getPropertyValue("--overflow-reveal-duration")).toBe("1400ms");
+    expect(title.style.getPropertyValue("--overflow-reveal-duration")).toBe("2240ms");
     expect(badge.outerHTML).toBe(badgeBefore);
   });
 
@@ -56,12 +56,12 @@ describe("session row reveal", () => {
   it("bounds reveal duration and reverses travel for RTL", () => {
     const short = buildRow({ textWidth: 190, titleWidth: 180 });
     createOverflowFadeRef()(short.title);
-    expect(short.title.style.getPropertyValue("--overflow-reveal-duration")).toBe("900ms");
+    expect(short.title.style.getPropertyValue("--overflow-reveal-duration")).toBe("1200ms");
 
     const long = buildRow({ textWidth: 900, titleWidth: 180, direction: "rtl" });
     createOverflowFadeRef()(long.title);
     expect(long.title.style.getPropertyValue("--overflow-reveal-translate")).toBe("720px");
-    expect(long.title.style.getPropertyValue("--overflow-reveal-duration")).toBe("1600ms");
+    expect(long.title.style.getPropertyValue("--overflow-reveal-duration")).toBe("8000ms");
   });
 
   it("ignores detached refs", () => {
