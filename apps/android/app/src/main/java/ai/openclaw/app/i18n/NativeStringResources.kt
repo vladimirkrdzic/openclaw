@@ -1500,6 +1500,7 @@ internal val nativeStringResourceIds: Map<String, Int> =
     "Waiting" to R.string.native_6e293a8c009e0011,
     "Waiting \${duration}" to R.string.native_e841c8273d808b7a,
     "Waiting \${minutes}m" to R.string.native_abf88bc4972bb194,
+    "Waiting for a concurrency slot" to R.string.native_2cee6c17e5e55571,
     "Waiting for device approval" to R.string.native_42e3a99c21767def,
     "Waiting for pairing" to R.string.native_9193a6bd2430c6df,
     "Waiting for review" to R.string.native_a61935d6be7b9f04,
