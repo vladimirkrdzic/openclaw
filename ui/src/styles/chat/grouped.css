@@ -220,7 +220,6 @@
   flex: 0 0 auto;
 }
 
-.chat-group.user .chat-group-footer-actions,
 .chat-group.assistant .chat-group-footer-actions,
 .chat-group.assistant .chat-message-actions-row {
   justify-content: flex-start;
