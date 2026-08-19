@@ -39,7 +39,6 @@ export type {
   SecretsStoreSetParams,
 } from "./schema/secrets.js";
 export * from "./schema/portals.js";
-// Explicit schema exports keep public protocol changes reviewable.
 export {
   isCloudWorkerPlacementState,
   ConnectParamsSchema,
@@ -697,3 +696,4 @@ export {
   PROTOCOL_VERSION,
 } from "./version.js";
 export type * from "./schema-types.js";
+export type { SessionsPatchResult } from "./sessions-patch-result.js";
