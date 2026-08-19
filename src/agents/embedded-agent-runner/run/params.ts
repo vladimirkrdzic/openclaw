@@ -251,6 +251,7 @@ export type RunEmbeddedAgentParams = {
   modelSelectionLocked?: boolean;
   /** Explicit runtime override selected for this turn. Unlike agentHarnessId, this may force OpenClaw. */
   agentHarnessRuntimeOverride?: string;
+  agentHarnessRuntimePreparationHint?: string;
   /** Verified setup continuation: pin both the harness and its local implementation. */
   expectedAgentHarnessRuntimeArtifact?: ExpectedAgentHarnessRuntimeArtifact;
   authProfileId?: string;
