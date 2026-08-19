@@ -209,9 +209,11 @@ suite.define(() => {
     // reveals the timestamp, which slots in to its left (right-aligned row).
     const ownGroup = userGroups.first();
     const ownName = ownGroup.locator(".chat-sender-name");
+    const ownBubble = ownGroup.locator(".chat-bubble");
     await page.mouse.move(0, 0);
     await expect(ownGroup.locator(".chat-group-timestamp")).toHaveCSS("opacity", "0");
     const restingNameBox = await ownName.boundingBox();
+    const ownBubbleBox = await ownBubble.boundingBox();
     await ownGroup.hover();
     const ownTimestamp = ownGroup.locator(".chat-group-timestamp");
     await expect(ownTimestamp).toHaveCSS("opacity", "1");
@@ -219,6 +221,10 @@ suite.define(() => {
     const hoveredNameBox = await ownName.boundingBox();
     const timestampBox = await ownTimestamp.boundingBox();
     expect(hoveredNameBox?.x).toBe(restingNameBox?.x);
+    expect((restingNameBox?.x ?? 0) + (restingNameBox?.width ?? 0)).toBeCloseTo(
+      (ownBubbleBox?.x ?? 0) + (ownBubbleBox?.width ?? 0),
+      0,
+    );
     expect((timestampBox?.x ?? 0) + (timestampBox?.width ?? 0)).toBeLessThan(
       hoveredNameBox?.x ?? 0,
     );
