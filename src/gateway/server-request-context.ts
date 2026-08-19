@@ -82,6 +82,7 @@ type GatewayRequestContextParams = {
   hostDesktopService?: GatewayRequestContext["hostDesktopService"];
   workerSessionPlacementService?: GatewayRequestContext["workerSessionPlacementService"];
   workerPlacementDiskSpaceReader?: GatewayRequestContext["workerPlacementDiskSpaceReader"];
+  workerPlacementRunnerAvailabilityReader?: GatewayRequestContext["workerPlacementRunnerAvailabilityReader"];
   workerPlacementDispatchService?: GatewayRequestContext["workerPlacementDispatchService"];
   validateAgentRuntimeApprovalAuthority: GatewayRequestContext["validateAgentRuntimeApprovalAuthority"];
   terminalSessions?: GatewayRequestContext["terminalSessions"];
@@ -379,6 +380,9 @@ export function createGatewayRequestContext(
       : {}),
     ...(params.workerPlacementDiskSpaceReader
       ? { workerPlacementDiskSpaceReader: params.workerPlacementDiskSpaceReader }
+      : {}),
+    ...(params.workerPlacementRunnerAvailabilityReader
+      ? { workerPlacementRunnerAvailabilityReader: params.workerPlacementRunnerAvailabilityReader }
       : {}),
     validateAgentRuntimeApprovalAuthority: params.validateAgentRuntimeApprovalAuthority,
     ...(params.workerPlacementDispatchService

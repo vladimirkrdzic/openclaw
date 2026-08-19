@@ -49,6 +49,7 @@ export function createHarness(
     terminalizedReclaimError?: Error;
     environmentGeneration?: number;
     failMoveAfterBegin?: boolean;
+    deviceRunnerAvailable?: boolean;
   } = {},
 ) {
   const reconciledManifestRef = MANIFEST_REF.replaceAll("b", "c");
@@ -97,6 +98,10 @@ export function createHarness(
     completePlacementMoveSourceToLocal: (params) => {
       log.push("placement:local");
       return placementStore.completePlacementMoveSourceToLocal(params);
+    },
+    completeAbandonedPlacementMoveSourceToLocal: (params) => {
+      log.push("placement:local");
+      return placementStore.completeAbandonedPlacementMoveSourceToLocal(params);
     },
     completePlacementMoveToWorker: (params) => placementStore.completePlacementMoveToWorker(params),
     getPlacementMove: (sessionId) => placementStore.getPlacementMove(sessionId),
@@ -342,6 +347,17 @@ export function createHarness(
   const service = createWorkerPlacementDispatchService({
     placements,
     environments,
+    runnerAvailability: {
+      read: (record) =>
+        record.state === "active" &&
+        currentEnvironment?.providerId === "device" &&
+        currentEnvironment.nodeDeviceId
+          ? {
+              kind: "device",
+              status: options.deviceRunnerAvailable ? "available" : "offline",
+            }
+          : undefined,
+    },
     workspaceOperations: options.workspaceOperations ?? createWorkerWorkspaceOperationCoordinator(),
     runLocalBarrier: async ({ authorize, startDispatch }) => {
       log.push("barrier");
