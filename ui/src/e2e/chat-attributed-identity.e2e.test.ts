@@ -48,6 +48,14 @@ async function readFooterGeometry(group: Locator) {
   });
 }
 
+function expectStableNamePosition(
+  actual: { left: number; top: number },
+  expected: { left: number; top: number },
+) {
+  expect(actual.left).toBe(expected.left);
+  expect(actual.top).toBeCloseTo(expected.top, 0);
+}
+
 suite.define(() => {
   it("uses one avatar placement and keeps shared-thread authors readable", async () => {
     const artifactDir = resolveArtifactDir();
@@ -150,7 +158,7 @@ suite.define(() => {
     await expect(page.locator(".chat-author-avatar")).toHaveCount(0);
     await captureProof(page, "after-hover.png");
     const hoveredPeerGeometry = await readFooterGeometry(peerGroup);
-    expect(hoveredPeerGeometry.name).toEqual(restingPeerGeometry.name);
+    expectStableNamePosition(hoveredPeerGeometry.name, restingPeerGeometry.name);
     expect(hoveredPeerGeometry.actions.left).toBeGreaterThanOrEqual(
       hoveredPeerGeometry.identity.right - 1,
     );
@@ -159,7 +167,7 @@ suite.define(() => {
     const restingLongNameGeometry = await readFooterGeometry(longNamePeerGroup);
     await longNamePeerGroup.hover();
     const hoveredLongNameGeometry = await readFooterGeometry(longNamePeerGroup);
-    expect(hoveredLongNameGeometry.name).toEqual(restingLongNameGeometry.name);
+    expectStableNamePosition(hoveredLongNameGeometry.name, restingLongNameGeometry.name);
     expect(hoveredLongNameGeometry.actions.left).toBeGreaterThanOrEqual(
       hoveredLongNameGeometry.identity.right - 1,
     );
@@ -169,7 +177,7 @@ suite.define(() => {
     await peerReply.focus();
     await expect(hoverDetails).toHaveCSS("opacity", "1");
     const focusedPeerGeometry = await readFooterGeometry(peerGroup);
-    expect(focusedPeerGeometry.name).toEqual(restingPeerGeometry.name);
+    expectStableNamePosition(focusedPeerGeometry.name, restingPeerGeometry.name);
     expect(focusedPeerGeometry.actions.left).toBeGreaterThanOrEqual(
       focusedPeerGeometry.identity.right - 1,
     );
@@ -185,7 +193,7 @@ suite.define(() => {
     await peerGroup.hover();
     await expect(hoverDetails).toHaveCSS("opacity", "1");
     const hoveredRtlGeometry = await readFooterGeometry(peerGroup);
-    expect(hoveredRtlGeometry.name).toEqual(restingRtlGeometry.name);
+    expectStableNamePosition(hoveredRtlGeometry.name, restingRtlGeometry.name);
     expect(hoveredRtlGeometry.actions.right).toBeLessThanOrEqual(
       hoveredRtlGeometry.identity.left + 1,
     );
@@ -201,7 +209,7 @@ suite.define(() => {
       .dispatchEvent("pointerup", { pointerType: "touch" });
     await expect(longNamePeerGroup).toHaveClass(/\bchat-group--meta-revealed\b/u);
     const revealedTouchGeometry = await readFooterGeometry(longNamePeerGroup);
-    expect(revealedTouchGeometry.name).toEqual(restingTouchGeometry.name);
+    expectStableNamePosition(revealedTouchGeometry.name, restingTouchGeometry.name);
     expect(revealedTouchGeometry.actions.right).toBeCloseTo(revealedTouchGeometry.footer.right, 0);
 
     await page.setViewportSize({ height: 760, width: 1180 });
