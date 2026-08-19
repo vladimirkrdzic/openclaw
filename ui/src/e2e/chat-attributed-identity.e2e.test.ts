@@ -36,10 +36,12 @@ async function readFooterGeometry(group: Locator) {
       throw new Error("Expected message footer identity and actions");
     }
     const actionsRect = actions.getBoundingClientRect();
+    const footerRect = footer.getBoundingClientRect();
     const identityRect = identity.getBoundingClientRect();
     const nameRect = name.getBoundingClientRect();
     return {
       actions: { left: actionsRect.left, right: actionsRect.right },
+      footer: { left: footerRect.left, right: footerRect.right },
       identity: { left: identityRect.left, right: identityRect.right },
       name: { left: nameRect.left, top: nameRect.top },
     };
@@ -200,9 +202,7 @@ suite.define(() => {
     await expect(longNamePeerGroup).toHaveClass(/\bchat-group--meta-revealed\b/u);
     const revealedTouchGeometry = await readFooterGeometry(longNamePeerGroup);
     expect(revealedTouchGeometry.name).toEqual(restingTouchGeometry.name);
-    expect(revealedTouchGeometry.actions.left).toBeGreaterThanOrEqual(
-      revealedTouchGeometry.identity.right - 1,
-    );
+    expect(revealedTouchGeometry.actions.right).toBeCloseTo(revealedTouchGeometry.footer.right, 0);
 
     await page.setViewportSize({ height: 760, width: 1180 });
     // Own-message footer: the always-visible name must stay put when hover
