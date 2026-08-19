@@ -214,6 +214,7 @@ suite.define(() => {
     await expect(ownGroup.locator(".chat-group-timestamp")).toHaveCSS("opacity", "0");
     const restingNameBox = await ownName.boundingBox();
     const ownBubbleBox = await ownBubble.boundingBox();
+    const restingOwnGeometry = await readFooterGeometry(ownGroup);
     await ownGroup.hover();
     const ownTimestamp = ownGroup.locator(".chat-group-timestamp");
     await expect(ownTimestamp).toHaveCSS("opacity", "1");
@@ -221,7 +222,7 @@ suite.define(() => {
     const hoveredNameBox = await ownName.boundingBox();
     const timestampBox = await ownTimestamp.boundingBox();
     expect(hoveredNameBox?.x).toBe(restingNameBox?.x);
-    expect((restingNameBox?.x ?? 0) + (restingNameBox?.width ?? 0)).toBeCloseTo(
+    expect(restingOwnGeometry.actions.right).toBeCloseTo(
       (ownBubbleBox?.x ?? 0) + (ownBubbleBox?.width ?? 0),
       0,
     );
