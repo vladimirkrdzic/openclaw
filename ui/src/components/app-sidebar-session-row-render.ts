@@ -310,8 +310,8 @@ export function renderRecentSession(params: {
                     class="sidebar-session__archive-glyph"
                     aria-label=${t("sessionsView.archived")}
                     title=${t("sessionsView.archived")}
-                  >${icons.archive}</span
-                >`
+                    >${icons.archive}</span
+                  >`
                 : nothing}${session.forkSource
                 ? html`<span
                     class="sidebar-session-fork-indicator"
@@ -444,7 +444,7 @@ export function renderRecentSession(params: {
       </span>
     </div>
   `;
-  // Marquee state mutates the row DOM; keying prevents cross-session reuse.
+  // The overflow ref owns per-title measurement state, so DOM cannot be reused across sessions.
   return keyed(session.key, row);
 }
 

@@ -19,7 +19,7 @@ function buildRow(params: { textWidth: number; titleWidth: number; direction?: "
   return { row, title, content, badge };
 }
 
-describe("session row reveal", () => {
+describe("overflow fade", () => {
   afterEach(() => {
     document.body.replaceChildren();
   });
