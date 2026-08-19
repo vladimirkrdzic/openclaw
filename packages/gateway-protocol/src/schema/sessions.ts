@@ -881,6 +881,7 @@ export type SessionsMessagesUnsubscribeParams = Static<
 export type SessionsAbortParams = Static<typeof SessionsAbortParamsSchema>;
 export type SessionsPluginPatchParams = Static<typeof SessionsPluginPatchParamsSchema>;
 export type SessionsPluginPatchResult = Static<typeof SessionsPluginPatchResultSchema>;
+export type { SessionsPatchResult } from "../sessions-patch-result.js";
 export type SessionsResetParams = Static<typeof SessionsResetParamsSchema>;
 export type SessionsDeleteParams = Static<typeof SessionsDeleteParamsSchema>;
 export type SessionsAssignOwnerParams = Static<typeof SessionsAssignOwnerParamsSchema>;
