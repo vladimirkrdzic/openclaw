@@ -327,6 +327,9 @@ gh search issues --repo openclaw/openclaw --match title,body --limit 50 \
 
 ## Follow PR review and landing hygiene
 
+- Separate repository owner involvement from GitHub merge enforcement. `CODEOWNERS` routes review requests; a pending request or zero submitted reviews does not prove that approval is mandatory. Owner-authored work or explicit direction from a listed owner satisfies the repository owner-involvement policy, but never waives a live GitHub-enforced review rule.
+- Before reporting a mandatory approval blocker, inspect live branch protection and every matching ruleset, the PR review decision/requests, and the authenticated actor's permission and bypass state. Name the exact enforced rule and actor limitation. If no review rule is enforced, do not stop before native prepare/merge solely because a requested team has not reviewed.
+- Explicit user direction can resolve repository policy and authorization questions; it cannot override server enforcement. If GitHub requires an independent approval and the actor cannot bypass that rule, stop with the exact blocker. Otherwise continue through the native landing flow and let its verified merge command exercise the live rule.
 - `scripts/pr` requires `git`, `gh`, `jq`, `rg` (ripgrep), `pnpm`, and `node`
   on the maintainer host. Let its preflight fail loudly when one is missing.
   Tests that source `scripts/pr-lib/*` directly must provide the same command
