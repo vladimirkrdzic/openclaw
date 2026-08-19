@@ -2,7 +2,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { InternalSessionEntry } from "../config/sessions.js";
-import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
+import {
+  listSessionEntriesCore,
+  loadSessionEntry,
+  upsertSessionEntryCore,
+} from "../config/sessions/session-accessor.js";
 import { closeOpenClawAgentDatabasesForTest } from "../state/openclaw-agent-db.js";
 import { noteMainSessionRecoveryIntegrity } from "./doctor-main-session-recovery.js";
 
@@ -52,6 +56,8 @@ describe("doctor main-session recovery integrity", () => {
       storePath,
       warnings,
       changes,
+      entries: listSessionEntriesCore({ agentId, storePath }),
+      entryCount: 1,
       confirmRepair,
       countLabel,
     });
@@ -75,6 +81,8 @@ describe("doctor main-session recovery integrity", () => {
       storePath,
       warnings,
       changes,
+      entries: listSessionEntriesCore({ agentId, storePath }),
+      entryCount: 1,
       confirmRepair,
       countLabel,
     });

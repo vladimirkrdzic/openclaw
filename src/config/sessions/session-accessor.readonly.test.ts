@@ -21,8 +21,10 @@ import {
   listSessionEntriesReadOnly,
   readSessionIdentityEvidenceBatch,
   resolveTranscriptSessionKeyBySessionId,
+  scanSessionEntriesReadOnly,
   upsertSessionEntryCore,
 } from "./session-accessor.js";
+import type { SessionEntry } from "./types.js";
 
 const tempDirs: string[] = [];
 const autoTempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -302,6 +304,41 @@ describe("session accessor readonly listing", () => {
     clearRegisteredAgentDatabases(env);
 
     expect(listSessionEntriesReadOnly(scope)).toHaveLength(1);
+    expect(countRegisteredAgentDatabases(env)).toBe(0);
+    expect(isOpenClawAgentDatabaseOpen(databasePath)).toBe(false);
+  });
+
+  it("streams list projections without retaining large session snapshots", async () => {
+    const stateDir = makeTempDir(tempDirs, "openclaw-session-readonly-stream-");
+    const env = { OPENCLAW_STATE_DIR: stateDir };
+    const agentId = "worker-1";
+    const scope = { agentId, env };
+
+    for (let index = 0; index < 2; index += 1) {
+      await upsertSessionEntryCore(
+        { ...scope, sessionKey: `agent:worker-1:stream-${index}` },
+        {
+          sessionId: `session-${index}`,
+          skillsSnapshot: { prompt: "x".repeat(1_000) },
+          systemPromptReport: { payload: "y".repeat(1_000) },
+          updatedAt: index + 1,
+        },
+      );
+    }
+    const databasePath = resolveOpenClawAgentSqlitePath({ agentId, env });
+    closeOpenClawAgentDatabasesForTest();
+    clearRegisteredAgentDatabases(env);
+
+    const visited: Array<{ sessionKey: string; entry: SessionEntry }> = [];
+    const count = scanSessionEntriesReadOnly(
+      { ...scope, projection: "list" },
+      ({ entry, sessionKey }) => visited.push({ entry, sessionKey }),
+    );
+
+    expect(count).toBe(2);
+    expect(visited).toHaveLength(2);
+    expect(visited.every(({ entry }) => !("skillsSnapshot" in entry))).toBe(true);
+    expect(visited.every(({ entry }) => !("systemPromptReport" in entry))).toBe(true);
     expect(countRegisteredAgentDatabases(env)).toBe(0);
     expect(isOpenClawAgentDatabaseOpen(databasePath)).toBe(false);
   });

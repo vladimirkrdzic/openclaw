@@ -3,6 +3,7 @@ import {
   executeSqliteQuerySync,
   executeSqliteQueryTakeFirstSync,
   getNodeSqliteKysely,
+  iterateSqliteQuerySync,
 } from "../../infra/kysely-sync.js";
 import {
   normalizeAgentId,
@@ -130,7 +131,7 @@ export function assertCanonicalSqliteSessionKeysCurrent(
     db.selectFrom("session_key_contract").select("main_key").where("id", "=", 1),
   )?.main_key;
   const canonicalMainKey = normalizeMainKey(mainKey ?? storedMainKey);
-  for (const row of executeSqliteQuerySync(
+  for (const row of iterateSqliteQuerySync(
     database.db,
     db
       .selectFrom("session_nodes")
@@ -149,7 +150,7 @@ export function assertCanonicalSqliteSessionKeysCurrent(
         "session_nodes.spawned_by",
         "retained_window.session_id as retained_window_id",
       ]),
-  ).rows) {
+  )) {
     if (
       row.entry_json === "{}" &&
       row.entry_valid === -1 &&

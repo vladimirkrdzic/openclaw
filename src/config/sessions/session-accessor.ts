@@ -154,6 +154,7 @@ export {
   resolveSessionEntryAccessTarget,
   resolveSessionEntryCandidateTarget,
   resolveSessionEntrySelection,
+  scanSessionEntriesReadOnly,
   updateResolvedSessionEntry,
   upsertSessionEntryCore,
 } from "./session-accessor.entry.js";

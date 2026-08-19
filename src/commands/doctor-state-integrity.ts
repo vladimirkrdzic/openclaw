@@ -39,7 +39,7 @@ import {
 } from "../config/sessions/paths.js";
 import {
   applySessionEntryReplacements,
-  listSessionEntriesReadOnly,
+  scanSessionEntriesReadOnly,
 } from "../config/sessions/session-accessor.js";
 import { resolveSqliteTargetFromSessionStorePath } from "../config/sessions/session-sqlite-target.js";
 import type { SessionEntry } from "../config/sessions/types.js";
@@ -58,7 +58,10 @@ import { shortenHomePath } from "../utils.js";
 import { repairHeartbeatPoisonedMainSession } from "./doctor-heartbeat-main-session-repair.js";
 import { describeHeartbeatSessionTargetIssues } from "./doctor-heartbeat-session-target.js";
 import { noteMainSessionRecoveryIntegrity } from "./doctor-main-session-recovery.js";
-import { runPluginSessionStateDoctorRepairs } from "./doctor-session-state-providers.js";
+import {
+  runPluginSessionStateDoctorRepairs,
+  sessionEntryMayContainPluginRouteState,
+} from "./doctor-session-state-providers.js";
 import { countLabel, formatFilePreview } from "./doctor-state-integrity-format.js";
 
 const STATE_INTEGRITY_CHECK_ID = "core/doctor/state-integrity";
@@ -1329,27 +1332,53 @@ export async function noteStateIntegrity(
     return;
   }
 
-  const sqliteEntries = listSessionEntriesReadOnly({ agentId, storePath: absoluteStorePath });
+  const mainKey = resolveMainSessionKey(cfg);
+  const sqliteSessionKeys = new Set<string>();
+  const sqliteDoctorStore: Record<string, SessionEntry> = {};
+  const sqliteMainRecoveryEntries: Array<{ entry: SessionEntry; sessionKey: string }> = [];
+  const sqliteEntryCount = scanSessionEntriesReadOnly(
+    { agentId, storePath: absoluteStorePath, projection: "list" },
+    ({ entry, sessionKey }) => {
+      sqliteSessionKeys.add(sessionKey);
+      const mainRecoveryTombstoned = Boolean(entry.mainRestartRecovery?.tombstone);
+      if (mainRecoveryTombstoned) {
+        sqliteMainRecoveryEntries.push({ entry, sessionKey });
+      }
+      if (
+        sessionKey === mainKey ||
+        mainRecoveryTombstoned ||
+        isSubagentRecoveryWedgedEntry(entry) ||
+        sessionEntryMayContainPluginRouteState(sessionKey, entry)
+      ) {
+        sqliteDoctorStore[sessionKey] = entry;
+      }
+    },
+  );
   const sqliteStorePath = resolveSqliteTargetFromSessionStorePath(absoluteStorePath, {
     agentId,
   }).path;
-  const sqliteSessionKeys = new Set(sqliteEntries.map(({ sessionKey }) => sessionKey));
   // A successful SQLite import archives sessions.json. Its continued presence
   // is therefore the explicit signal that pre-import rows still need inspection.
   const legacyStore = existsFile(absoluteStorePath)
     ? loadLegacySessionStore(absoluteStorePath)
     : {};
-  const store: Record<string, SessionEntry> = { ...legacyStore };
-  for (const { entry, sessionKey } of sqliteEntries) {
-    store[sessionKey] = entry;
-  }
+  const store: Record<string, SessionEntry> = { ...legacyStore, ...sqliteDoctorStore };
   const sessionPathOpts = resolveSessionFilePathOptions({ agentId, storePath });
   const entries = Object.entries(store).filter(([, entry]) => entry && typeof entry === "object");
+  const legacyRecoveryEntries = Object.entries(legacyStore).map(([sessionKey, entry]) => ({
+    entry,
+    sessionKey,
+  }));
+  const totalEntryCount =
+    sqliteEntryCount +
+    legacyRecoveryEntries.filter(({ sessionKey }) => !sqliteSessionKeys.has(sessionKey)).length;
   const canonicalEntryCount = await noteMainSessionRecoveryIntegrity({
     agentId,
     storePath: absoluteStorePath,
     warnings,
     changes,
+    entries: [...legacyRecoveryEntries, ...sqliteMainRecoveryEntries],
+    entryCount: totalEntryCount,
     confirmRepair: (params) => prompter.confirmRuntimeRepair(params),
     countLabel,
   });
@@ -1485,7 +1514,6 @@ export async function noteStateIntegrity(
       warnings.push(warning);
     }
 
-    const mainKey = resolveMainSessionKey(cfg);
     const mainEntry = store[mainKey];
     // SQLite-owned transcripts live in the agent DB after import.
     // Do not require the archived legacy JSONL for those sessions.
@@ -1512,7 +1540,7 @@ export async function noteStateIntegrity(
 
   // SQLite transcript ownership is repaired by the import/migration workflow.
   // Never offer generic file archival against a live canonical session store.
-  if (sqliteEntries.length === 0 && existsDir(sessionsDir)) {
+  if (sqliteEntryCount === 0 && existsDir(sessionsDir)) {
     const referencedTranscriptPaths = new Set<string>();
     for (const [, entry] of entries) {
       if (!entry?.sessionId) {

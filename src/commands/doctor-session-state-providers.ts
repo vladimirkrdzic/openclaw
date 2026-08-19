@@ -110,7 +110,10 @@ function resolvePluginDoctorSessionRouteStateOwners(params: {
   return listPluginDoctorSessionRouteStateOwners({ config: params.cfg, env: params.env });
 }
 
-function entryMayContainPluginSessionRouteState(sessionKey: string, entry: SessionEntry): boolean {
+export function sessionEntryMayContainPluginRouteState(
+  sessionKey: string,
+  entry: SessionEntry,
+): boolean {
   if (isValidAgentHarnessSessionStoreEntry(sessionKey, entry)) {
     return false;
   }
@@ -137,7 +140,7 @@ function entryMayContainPluginSessionRouteState(sessionKey: string, entry: Sessi
 /** Fast prefilter for session stores that might contain plugin-owned routing state. */
 function storeMayContainPluginSessionRouteState(store: Record<string, SessionEntry>): boolean {
   return Object.entries(store).some(([sessionKey, entry]) =>
-    entryMayContainPluginSessionRouteState(sessionKey, entry),
+    sessionEntryMayContainPluginRouteState(sessionKey, entry),
   );
 }
 
@@ -496,7 +499,7 @@ export async function runPluginSessionStateDoctorRepairs(params: {
     if (!entry || typeof entry !== "object") {
       continue;
     }
-    if (!entryMayContainPluginSessionRouteState(sessionKey, entry)) {
+    if (!sessionEntryMayContainPluginRouteState(sessionKey, entry)) {
       continue;
     }
     const agentId = resolveSessionAgentId(params.cfg, sessionKey);

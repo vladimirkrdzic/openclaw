@@ -1,16 +1,16 @@
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import { transitionMainSessionRecovery } from "../agents/main-session-recovery/main-session-recovery-state.js";
 import type { InternalSessionEntry } from "../config/sessions.js";
-import {
-  applySessionEntryReplacements,
-  listSessionEntriesCore,
-} from "../config/sessions/session-accessor.js";
+import { applySessionEntryReplacements } from "../config/sessions/session-accessor.js";
+import type { SessionEntrySummary } from "../config/sessions/session-accessor.types.js";
 
 type MainSessionRecoveryDoctorParams = {
   agentId: string;
   storePath: string;
   warnings: string[];
   changes: string[];
+  entries: readonly SessionEntrySummary[];
+  entryCount: number;
   confirmRepair: (params: { message: string; initialValue?: boolean }) => Promise<boolean>;
   countLabel: (count: number, singular: string, plural?: string) => string;
 };
@@ -18,8 +18,7 @@ type MainSessionRecoveryDoctorParams = {
 export async function noteMainSessionRecoveryIntegrity(
   params: MainSessionRecoveryDoctorParams,
 ): Promise<number> {
-  const entries = listSessionEntriesCore({ agentId: params.agentId, storePath: params.storePath });
-  const wedged = entries.flatMap(({ entry, sessionKey }) => {
+  const wedged = params.entries.flatMap(({ entry, sessionKey }) => {
     const tombstone = (entry as InternalSessionEntry).mainRestartRecovery?.tombstone;
     return tombstone
       ? [
@@ -36,7 +35,7 @@ export async function noteMainSessionRecoveryIntegrity(
       : [];
   });
   if (wedged.length === 0) {
-    return entries.length;
+    return params.entryCount;
   }
 
   const wedgedCount = params.countLabel(wedged.length, "wedged main session");
@@ -58,7 +57,7 @@ export async function noteMainSessionRecoveryIntegrity(
 
   const staleAborted = wedged.filter(({ health }) => health.repair === "clear_stale_abort");
   if (staleAborted.length === 0) {
-    return entries.length;
+    return params.entryCount;
   }
   const staleCount = params.countLabel(staleAborted.length, "wedged main session");
   if (
@@ -67,7 +66,7 @@ export async function noteMainSessionRecoveryIntegrity(
       initialValue: true,
     }))
   ) {
-    return entries.length;
+    return params.entryCount;
   }
 
   const repairedAt = Date.now();
@@ -91,5 +90,5 @@ export async function noteMainSessionRecoveryIntegrity(
       `- Cleared aborted restart-recovery flags for ${params.countLabel(repaired, "wedged main session")}.`,
     );
   }
-  return entries.length;
+  return params.entryCount;
 }

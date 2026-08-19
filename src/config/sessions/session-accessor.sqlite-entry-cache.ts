@@ -134,7 +134,7 @@ export function trackSessionEntryCacheWrite(
     : { before, after: readSessionNodesGeneration(database.db) };
 }
 
-function createListProjection(entry: SessionEntry): SessionEntry {
+export function projectSessionEntryList(entry: SessionEntry): SessionEntry {
   // clone:false list consumers treat entries and their nested values as immutable.
   // Share those nested values instead of deep-cloning large snapshots only to discard them.
   const projected = { ...entry };
@@ -159,7 +159,7 @@ function createLazyListProjections(
       }
       // A snapshot projects each key once. clone:false readers share this immutable
       // value, so replacing it would break identity and reintroduce store-wide cloning.
-      const projected = createListProjection(entry);
+      const projected = projectSessionEntryList(entry);
       projectedByKey.set(sessionKey, projected);
       return projected;
     },

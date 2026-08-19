@@ -37,6 +37,7 @@ import {
   resolveSessionEntry,
   upsertSessionEntryCore,
 } from "./session-accessor.sqlite-entry.js";
+import { scanSessionEntriesReadOnly } from "./session-accessor.sqlite-scan.js";
 import type {
   SessionAccessScope,
   LogicalSessionAccessScope,
@@ -90,6 +91,7 @@ export {
   // fresh-reads and checks sessionId inside its locked commit, and void/entry has no rebound signal.
   replaceSessionEntrySync,
   resolveSessionEntryFromStore,
+  scanSessionEntriesReadOnly,
   upsertSessionEntryCore,
 };
 
