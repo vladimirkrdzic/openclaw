@@ -247,6 +247,7 @@ const enActivity = {
             "The Gateway could not return this diagnostic projection. No identity facts were inferred from Live activity.",
         },
       },
+      restart: "Restart inspection",
       retry: "Retry inspection",
     },
   },

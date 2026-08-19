@@ -562,6 +562,86 @@ describeControlUiE2e("Control UI durable Activity run inspector", () => {
     }
   });
 
+  it("restarts stale receipt deep links on page one while preserving the exact selector", async () => {
+    for (const scenario of [
+      { kind: "run", id: "run:stale/deep-link" },
+      { kind: "execution", id: "execution:stale/deep-link" },
+    ] as const) {
+      const context = await newContext();
+      const page = await context.newPage();
+      const receiptId = `private-receipt-${scenario.kind}`;
+      const decisionCursor = `a:1786000000000:${scenario.kind === "run" ? "41" : "42"}`;
+      const firstPage = presentResult(
+        scenario.kind === "run" ? scenario.id : "run-for-exact-execution",
+        scenario.kind === "execution" ? scenario.id : "execution-for-run",
+      );
+      const gateway = await installMockGateway(page, {
+        featureMethods: ["audit.run.inspect"],
+        methodResponses: {
+          "audit.run.inspect": {
+            cases: [
+              {
+                match: { decisionCursor },
+                response: {
+                  __mockError: {
+                    code: "INVALID_REQUEST",
+                    message: "decision cursor is no longer retained",
+                  },
+                },
+              },
+              { match: { [`${scenario.kind}Id`]: scenario.id }, response: firstPage },
+            ],
+          },
+        },
+      });
+
+      try {
+        const search = new URLSearchParams({
+          view: "run",
+          [scenario.kind]: scenario.id,
+          receipt: receiptId,
+          decision: decisionCursor,
+        });
+        await page.goto(`${server.baseUrl}activity?${search.toString()}`);
+        await page.getByRole("heading", { name: "Run inspection failed" }).waitFor();
+        const restart = page.getByRole("button", { name: "Restart inspection" });
+        await restart.waitFor();
+        expect(await page.getByRole("button", { name: "Retry inspection" }).count()).toBe(0);
+        const errorText = (await page.locator(".run-inspector__panel").textContent()) ?? "";
+        expect(errorText).not.toContain(receiptId);
+        expect(errorText).not.toContain(decisionCursor);
+        if (scenario.kind === "run") {
+          await screenshot(page, "17-stale-cursor-restart.png");
+        }
+
+        const requestCount = (await gateway.getRequests("audit.run.inspect")).length;
+        await restart.focus();
+        await expect
+          .poll(() => page.evaluate(() => document.activeElement?.textContent?.trim()))
+          .toBe("Restart inspection");
+        await page.keyboard.press("Enter");
+        await page.getByRole("heading", { name: "Identity and authority" }).waitFor();
+        const request = await gateway.waitForRequest("audit.run.inspect", { after: requestCount });
+        const expectedParams = {
+          [`${scenario.kind}Id`]: scenario.id,
+          decisionLimit: 50,
+          ...(scenario.kind === "run" ? { executionLimit: 50 } : {}),
+        };
+        expect(request.params).toEqual(expectedParams);
+        expect(request.params).not.toHaveProperty("decisionCursor");
+        const restartedUrl = new URL(page.url());
+        expect(restartedUrl.searchParams.get(scenario.kind)).toBe(scenario.id);
+        expect(restartedUrl.searchParams.get(scenario.kind === "run" ? "execution" : "run")).toBe(
+          null,
+        );
+        expect(restartedUrl.searchParams.get("receipt")).toBeNull();
+        expect(restartedUrl.searchParams.get("decision")).toBeNull();
+      } finally {
+        await context.close();
+      }
+    }
+  });
+
   it("keeps a populated Live activity stream bounded after adding the mode switcher", async () => {
     const context = await newContext();
     const page = await context.newPage();

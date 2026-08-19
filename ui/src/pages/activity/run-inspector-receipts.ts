@@ -3,9 +3,12 @@ import type {
   AuditRunInspectResult,
   DecisionReceiptV1,
 } from "../../../../packages/gateway-protocol/src/schema/audit-run.js";
-import { pathForRoute } from "../../app-route-paths.ts";
 import { t } from "../../i18n/index.ts";
-import type { RunInspectorSelector, RunInspectorState } from "./run-inspector-model.ts";
+import {
+  activityRunInspectorSelectorHref,
+  type RunInspectorSelector,
+  type RunInspectorState,
+} from "./run-inspector-model.ts";
 
 export function coverageKey(
   state: AuditRunInspectResult["coverage"]["state"],
@@ -26,12 +29,26 @@ export function renderSafeRef(value: string | number, mono = false, href?: strin
   return href ? html`<a href=${href}>${content}</a>` : content;
 }
 
-export function renderMissingEvidence(values: readonly string[]) {
+type ReceiptSectionOptions = { headingId?: string; headingLevel?: 3 | 6 };
+
+function renderSectionHeading(label: string, headingId: string, headingLevel: 3 | 6) {
+  return headingLevel === 6
+    ? html`<h6 id=${headingId}>${label}</h6>`
+    : html`<h3 id=${headingId}>${label}</h3>`;
+}
+
+export function renderMissingEvidence(
+  values: readonly string[],
+  options: ReceiptSectionOptions = {},
+) {
+  const headingId = options.headingId ?? "run-inspector-missing-heading";
   return html`
-    <section class="run-inspector__section" aria-labelledby="run-inspector-missing-heading">
-      <h3 id="run-inspector-missing-heading">
-        ${t("activity.runInspector.missingEvidenceHeading")}
-      </h3>
+    <section class="run-inspector__section" aria-labelledby=${headingId}>
+      ${renderSectionHeading(
+        t("activity.runInspector.missingEvidenceHeading"),
+        headingId,
+        options.headingLevel ?? 3,
+      )}
       ${values.length === 0
         ? html`<p>${t("activity.runInspector.noMissingEvidence")}</p>`
         : html`<ul class="run-inspector__code-list">
@@ -43,16 +60,19 @@ export function renderMissingEvidence(values: readonly string[]) {
 
 export function renderRemediation(
   remediation: readonly { code: string; text: string }[],
+  options: ReceiptSectionOptions = {},
 ): TemplateResult | typeof nothing {
   if (remediation.length === 0) {
     return nothing;
   }
+  const headingId = options.headingId ?? "run-inspector-remediation-heading";
   return html`
-    <section
-      class="run-inspector__section"
-      aria-label=${t("activity.runInspector.nextStepsHeading")}
-    >
-      <h3>${t("activity.runInspector.nextStepsHeading")}</h3>
+    <section class="run-inspector__section" aria-labelledby=${headingId}>
+      ${renderSectionHeading(
+        t("activity.runInspector.nextStepsHeading"),
+        headingId,
+        options.headingLevel ?? 3,
+      )}
       <ul class="run-inspector__remediation-list">
         ${remediation.map(
           (item) => html`<li><span>${item.text}</span> ${renderSafeRef(item.code, true)}</li>`,
@@ -68,20 +88,10 @@ function receiptInspectorHref(
   decisionCursor: string | undefined,
   basePath: string,
 ): string {
-  const search = new URLSearchParams({
-    view: "run",
-    [selector.kind]: selector.id,
-    receipt: receiptId,
+  return activityRunInspectorSelectorHref(selector, basePath, {
+    id: receiptId,
+    decisionCursor,
   });
-  if (decisionCursor) {
-    search.set("decision", decisionCursor);
-  }
-  return `${pathForRoute("activity", basePath)}?${search.toString()}`;
-}
-
-function selectorInspectorHref(selector: RunInspectorSelector, basePath: string): string {
-  const search = new URLSearchParams({ view: "run", [selector.kind]: selector.id });
-  return `${pathForRoute("activity", basePath)}?${search.toString()}`;
 }
 
 function decisionOutcomeLabel(outcome: DecisionReceiptV1["decision"]["outcome"]): string {
@@ -193,9 +203,15 @@ function renderReceiptDetail(receipt: DecisionReceiptV1) {
           receipt.enforcement.contextFieldsUsed,
           t("activity.runInspector.decisions.noContextFields"),
         )}
-        ${renderMissingEvidence(receipt.missingEvidence)}
+        ${renderMissingEvidence(receipt.missingEvidence, {
+          headingId: "run-inspector-receipt-missing-heading",
+          headingLevel: 6,
+        })}
       </section>
-      ${renderRemediation(receipt.remediation)}
+      ${renderRemediation(receipt.remediation, {
+        headingId: "run-inspector-receipt-remediation-heading",
+        headingLevel: 6,
+      })}
     </article>
   `;
 }
@@ -296,7 +312,7 @@ export function renderDecisions(
             <h4>${t("activity.runInspector.decisions.notFoundTitle")}</h4>
             <p>${t("activity.runInspector.decisions.notFoundDescription")}</p>
             ${selector
-              ? html`<a href=${selectorInspectorHref(selector, basePath)}>
+              ? html`<a href=${activityRunInspectorSelectorHref(selector, basePath)}>
                   ${t("activity.runInspector.decisions.heading")}
                 </a>`
               : nothing}

@@ -30,6 +30,7 @@ import { OpenClawLightDomElement } from "../../lit/openclaw-element.ts";
 import { StreamAutoFollowController } from "../../lit/stream-auto-follow-controller.ts";
 import { SubscriptionsController } from "../../lit/subscriptions-controller.ts";
 import {
+  activityRunInspectorSearch,
   mergeDecisionPage,
   receiptPageCursors,
   resolveActivityRouteData,
@@ -267,8 +268,8 @@ class ActivityPage extends OpenClawLightDomElement {
       gateway.snapshot.phase === "connected" &&
       this.routeData?.mode === "run" &&
       inspectorRequestKey(this.routeData) === requestSelectorKey;
+    const decisionCursor = this.routeData.mode === "run" ? this.routeData.decisionCursor : null;
     try {
-      const decisionCursor = this.routeData.mode === "run" ? this.routeData.decisionCursor : null;
       const params =
         selector.kind === "run"
           ? {
@@ -328,7 +329,16 @@ class ActivityPage extends OpenClawLightDomElement {
           ? { status: "unsupported" }
           : previousState
             ? { ...previousState, executionPageStatus: "error" }
-            : { status: "error" };
+            : {
+                status: "error",
+                recovery:
+                  decisionCursor &&
+                  error instanceof GatewayRequestError &&
+                  error.gatewayCode === "INVALID_REQUEST" &&
+                  error.retryable !== true
+                    ? "restart"
+                    : "retry",
+              };
     } finally {
       if (this.inspectorAbort === abort) {
         this.inspectorAbort = null;
@@ -428,6 +438,14 @@ class ActivityPage extends OpenClawLightDomElement {
           this.inspectorAbort = null;
         }
       });
+  }
+
+  private restartRunInspector() {
+    const route = this.routeData;
+    if (route.mode !== "run" || !route.selector) {
+      return;
+    }
+    this.context.navigate("activity", { search: activityRunInspectorSearch(route.selector) });
   }
 
   private selectMode(mode: "sessions" | "live") {
@@ -640,6 +658,7 @@ class ActivityPage extends OpenClawLightDomElement {
                   onLoadMoreDecisions: () => this.loadMoreDecisions(),
                   receiptId: this.routeData.mode === "run" ? this.routeData.receiptId : null,
                   selector: this.routeData.mode === "run" ? this.routeData.selector : null,
+                  onRestart: () => this.restartRunInspector(),
                   onRetry: () =>
                     this.syncRunInspector(
                       this.context.gateway,

@@ -119,6 +119,7 @@ function renderState(state: RunInspectorState, onLoadMoreExecutions = vi.fn()) {
       receiptId: null,
       onLoadMoreDecisions: vi.fn(),
       onLoadMoreExecutions,
+      onRestart: vi.fn(),
       onRetry: vi.fn(),
     }),
     container,
@@ -196,7 +197,7 @@ describe("renderRunInspector", () => {
     [{ status: "disconnected" } satisfies RunInspectorState, "Gateway disconnected"],
     [{ status: "unauthorized" } satisfies RunInspectorState, "Operator read access required"],
     [{ status: "unsupported" } satisfies RunInspectorState, "Run inspection unsupported"],
-    [{ status: "error" } satisfies RunInspectorState, "Run inspection failed"],
+    [{ status: "error", recovery: "retry" } satisfies RunInspectorState, "Run inspection failed"],
   ])("renders the explicit panel state", (state, expected) => {
     expect(renderState(state).textContent).toContain(expected);
   });
@@ -304,6 +305,7 @@ describe("renderRunInspector", () => {
         receiptId: receipt.receiptId,
         onLoadMoreDecisions,
         onLoadMoreExecutions: vi.fn(),
+        onRestart: vi.fn(),
         onRetry: vi.fn(),
       }),
       container,
@@ -372,6 +374,7 @@ describe("renderRunInspector", () => {
         receiptId: "missing-receipt",
         onLoadMoreDecisions: vi.fn(),
         onLoadMoreExecutions: vi.fn(),
+        onRestart: vi.fn(),
         onRetry: vi.fn(),
       }),
       notFound,
@@ -381,5 +384,86 @@ describe("renderRunInspector", () => {
       "More receipts could not be loaded",
     );
     expect(notFound.textContent).not.toContain("missing-receipt");
+  });
+
+  it("uses unique labelled receipt sections without skipping from h5 to h3", () => {
+    const result = presentResult();
+    const container = renderState({
+      status: "ready",
+      result,
+      receiptPageCursors: new Map(),
+    });
+
+    const ids = [...container.querySelectorAll<HTMLElement>("[id]")].map((node) => node.id);
+    expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toEqual([]);
+    for (const labelled of container.querySelectorAll<HTMLElement>("[aria-labelledby]")) {
+      for (const id of labelled.getAttribute("aria-labelledby")?.split(/\s+/) ?? []) {
+        expect(
+          ids.filter((candidate) => candidate === id),
+          id,
+        ).toHaveLength(1);
+      }
+    }
+
+    expect(container.querySelector("#run-inspector-missing-heading")?.tagName).toBe("H3");
+    expect(container.querySelector("#run-inspector-receipt-missing-heading")?.tagName).toBe("H6");
+    expect(container.querySelector("#run-inspector-receipt-remediation-heading")?.tagName).toBe(
+      "H6",
+    );
+    expect(container.querySelector(".run-inspector__receipt-detail h3")).toBeNull();
+
+    const unavailable = renderState({
+      status: "ready",
+      result: unavailableResult("unsupported", "identity_context_unavailable", [
+        { code: "run_again_after_expiry", text: "Run it again." },
+      ]),
+      receiptPageCursors: new Map(),
+    });
+    expect(unavailable.querySelector("#run-inspector-remediation-heading")?.tagName).toBe("H3");
+  });
+
+  it("renders restart only for stale-cursor recovery and Retry for retryable failures", () => {
+    const renderError = (
+      recovery: "restart" | "retry",
+      callbacks: {
+        onRestart: () => void;
+        onRetry: () => void;
+      },
+    ) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      render(
+        renderRunInspector({
+          basePath: "/operator",
+          state: { status: "error", recovery },
+          selector: { kind: "run", id: "run-private" },
+          receiptId: "receipt-private",
+          onLoadMoreDecisions: vi.fn(),
+          onLoadMoreExecutions: vi.fn(),
+          onRestart: callbacks.onRestart,
+          onRetry: callbacks.onRetry,
+        }),
+        container,
+      );
+      return container;
+    };
+    const onRestart = vi.fn();
+    const stale = renderError("restart", { onRestart, onRetry: vi.fn() });
+    const restart = [...stale.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Restart inspection",
+    );
+    restart?.click();
+    expect(onRestart).toHaveBeenCalledOnce();
+    expect(stale.textContent).not.toContain("Retry inspection");
+    expect(stale.textContent).not.toContain("receipt-private");
+
+    const onRetry = vi.fn();
+    const retryable = renderError("retry", { onRestart: vi.fn(), onRetry });
+    const retry = [...retryable.querySelectorAll("button")].find(
+      (button) => button.textContent?.trim() === "Retry inspection",
+    );
+    retry?.click();
+    expect(onRetry).toHaveBeenCalledOnce();
+    expect(retryable.textContent).not.toContain("Restart inspection");
   });
 });

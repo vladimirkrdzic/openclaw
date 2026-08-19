@@ -4,10 +4,10 @@ import type {
   ExecutionIdentityContextV1,
   PrincipalRefV1,
 } from "../../../../packages/gateway-protocol/src/schema/audit-run.js";
-import { pathForRoute } from "../../app-route-paths.ts";
 import { t } from "../../i18n/index.ts";
 import { registerActivityEnglish } from "../../i18n/locales/en-activity.ts";
 import {
+  activityRunInspectorSelectorHref,
   classifyRunInspection,
   type RunInspectorSelector,
   type RunInspectorState,
@@ -33,6 +33,7 @@ type RunInspectorProps = {
   receiptId: string | null;
   onLoadMoreDecisions: () => void;
   onLoadMoreExecutions: () => void;
+  onRestart: () => void;
   onRetry: () => void;
 };
 
@@ -124,16 +125,6 @@ function renderFact(fact: IdentityFact) {
       </dd>
     </div>
   `;
-}
-
-function runInspectorHref(runId: string, basePath: string): string {
-  const search = new URLSearchParams({ view: "run", run: runId });
-  return `${pathForRoute("activity", basePath)}?${search.toString()}`;
-}
-
-function executionInspectorHref(executionId: string, basePath: string): string {
-  const search = new URLSearchParams({ view: "run", execution: executionId });
-  return `${pathForRoute("activity", basePath)}?${search.toString()}`;
 }
 
 function identityFacts(context: ExecutionIdentityContextV1, basePath: string): IdentityFact[] {
@@ -295,7 +286,10 @@ function identityFacts(context: ExecutionIdentityContextV1, basePath: string): I
                     label: t("activity.runInspector.values.parentRunReference"),
                     value: lineage.parentRunId,
                     mono: true,
-                    href: runInspectorHref(lineage.parentRunId, basePath),
+                    href: activityRunInspectorSelectorHref(
+                      { kind: "run", id: lineage.parentRunId },
+                      basePath,
+                    ),
                   },
                 ]
               : []),
@@ -407,7 +401,12 @@ function renderUnavailableResult(
                       date: new Date(candidate.createdAt).toLocaleString(),
                     })}</span
                   >
-                  <a href=${executionInspectorHref(candidate.executionId, basePath)}>
+                  <a
+                    href=${activityRunInspectorSelectorHref(
+                      { kind: "execution", id: candidate.executionId },
+                      basePath,
+                    )}
+                  >
                     ${t("activity.runInspector.candidates.executionReference")}
                     ${renderSafeRef(candidate.executionId, true)}
                   </a>
@@ -484,15 +483,18 @@ function renderReady(
 function renderPanel(
   title: string,
   description: string,
-  options: { retry?: boolean; onRetry: () => void; role?: "alert" | "status" },
+  options: {
+    action?: { label: string; onClick: () => void };
+    role?: "alert" | "status";
+  } = {},
 ) {
   return html`
     <div class="run-inspector__panel" role=${options.role ?? "status"}>
       <h3>${title}</h3>
       <p>${description}</p>
-      ${options.retry
-        ? html`<button type="button" class="btn" @click=${options.onRetry}>
-            ${t("activity.runInspector.retry")}
+      ${options.action
+        ? html`<button type="button" class="btn" @click=${options.action.onClick}>
+            ${options.action.label}
           </button>`
         : nothing}
     </div>
@@ -507,7 +509,6 @@ export function renderRunInspector(props: RunInspectorProps) {
       content = renderPanel(
         t("activity.runInspector.panels.empty.title"),
         t("activity.runInspector.panels.empty.description"),
-        { onRetry: props.onRetry },
       );
       break;
     case "loading":
@@ -518,35 +519,38 @@ export function renderRunInspector(props: RunInspectorProps) {
         state.waitingForGateway
           ? t("activity.runInspector.panels.waiting.description")
           : t("activity.runInspector.panels.loading.description"),
-        { onRetry: props.onRetry },
       );
       break;
     case "disconnected":
       content = renderPanel(
         t("activity.runInspector.panels.disconnected.title"),
         t("activity.runInspector.panels.disconnected.description"),
-        { onRetry: props.onRetry },
       );
       break;
     case "unauthorized":
       content = renderPanel(
         t("activity.runInspector.panels.unauthorized.title"),
         t("activity.runInspector.panels.unauthorized.description"),
-        { onRetry: props.onRetry, role: "alert" },
+        { role: "alert" },
       );
       break;
     case "unsupported":
       content = renderPanel(
         t("activity.runInspector.panels.unsupported.title"),
         t("activity.runInspector.panels.unsupported.description"),
-        { onRetry: props.onRetry },
       );
       break;
     case "error":
       content = renderPanel(
         t("activity.runInspector.panels.error.title"),
         t("activity.runInspector.panels.error.description"),
-        { onRetry: props.onRetry, retry: true, role: "alert" },
+        {
+          action:
+            state.recovery === "restart"
+              ? { label: t("activity.runInspector.restart"), onClick: props.onRestart }
+              : { label: t("activity.runInspector.retry"), onClick: props.onRetry },
+          role: "alert",
+        },
       );
       break;
     case "ready":

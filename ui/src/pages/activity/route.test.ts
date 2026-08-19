@@ -49,6 +49,8 @@ describe("resolveActivityRouteData", () => {
     expect(loadRoute(`?view=run&run=${encodeURIComponent(runId)}`)).toEqual({
       mode: "run",
       selector: { kind: "run", id: runId },
+      receiptId: null,
+      decisionCursor: null,
     });
   });
 
@@ -59,14 +61,50 @@ describe("resolveActivityRouteData", () => {
     ).toEqual({
       mode: "run",
       selector: { kind: "execution", id: executionId },
+      receiptId: null,
+      decisionCursor: null,
     });
   });
 
   it("keeps a run view with an empty selection explicit", () => {
-    expect(loadRoute("?view=run")).toEqual({ mode: "run", selector: null });
+    expect(loadRoute("?view=run")).toEqual({
+      mode: "run",
+      selector: null,
+      receiptId: null,
+      decisionCursor: null,
+    });
     expect(loadRoute("?view=run&run=%20%20")).toEqual({
       mode: "run",
       selector: null,
+      receiptId: null,
+      decisionCursor: null,
+    });
+  });
+
+  it.each([
+    ["run", "run:a/b % lobster"],
+    ["execution", "execution:a/b % lobster"],
+  ] as const)("loads a %s receipt deep link with its bounded-page cursor", (kind, id) => {
+    expect(
+      loadRoute(
+        `?view=run&${kind}=${encodeURIComponent(id)}&receipt=receipt%3A2&decision=a%3A10%3A2`,
+      ),
+    ).toEqual({
+      mode: "run",
+      selector: { kind, id },
+      receiptId: "receipt:2",
+      decisionCursor: "a:10:2",
+    });
+  });
+
+  it("retains a decision cursor only with a non-empty receipt", () => {
+    expect(loadRoute("?view=run&run=run-1&decision=a%3A10%3A2")).toMatchObject({
+      receiptId: null,
+      decisionCursor: null,
+    });
+    expect(loadRoute("?view=run&run=run-1&receipt=%20%20&decision=a%3A10%3A2")).toMatchObject({
+      receiptId: null,
+      decisionCursor: null,
     });
   });
 });

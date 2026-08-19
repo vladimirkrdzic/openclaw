@@ -17,8 +17,30 @@ export type ActivityRouteData =
       decisionCursor: string | null;
     };
 
+export function activityRunInspectorSearch(
+  selector: RunInspectorSelector,
+  receipt?: { id: string; decisionCursor?: string },
+): string {
+  let search = `?view=run&${selector.kind}=${encodeURIComponent(selector.id)}`;
+  if (receipt) {
+    search += `&receipt=${encodeURIComponent(receipt.id)}`;
+    if (receipt.decisionCursor) {
+      search += `&decision=${encodeURIComponent(receipt.decisionCursor)}`;
+    }
+  }
+  return search;
+}
+
+export function activityRunInspectorSelectorHref(
+  selector: RunInspectorSelector,
+  basePath: string,
+  receipt?: { id: string; decisionCursor?: string },
+): string {
+  return `${pathForRoute("activity", basePath)}${activityRunInspectorSearch(selector, receipt)}`;
+}
+
 export function activityRunInspectorHref(runId: string, basePath: string): string {
-  return `${pathForRoute("activity", basePath)}?view=run&run=${encodeURIComponent(runId)}`;
+  return activityRunInspectorSelectorHref({ kind: "run", id: runId }, basePath);
 }
 
 export function resolveActivityRouteData(search: string): ActivityRouteData {
@@ -57,7 +79,7 @@ export type RunInspectorState =
   | { status: "disconnected" }
   | { status: "unauthorized" }
   | { status: "unsupported" }
-  | { status: "error" }
+  | { status: "error"; recovery: "restart" | "retry" }
   | {
       status: "ready";
       result: AuditRunInspectResult;
