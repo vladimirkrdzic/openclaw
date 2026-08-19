@@ -490,6 +490,7 @@ export async function executePollAction(params: {
   resolveCorePoll: () => {
     to: string;
     question: string;
+    content?: string;
     options: string[];
     maxSelections: number;
     durationSeconds?: number;
@@ -516,6 +517,7 @@ export async function executePollAction(params: {
     cfg: params.ctx.cfg,
     to: corePoll.to,
     question: corePoll.question,
+    content: corePoll.content,
     options: corePoll.options,
     maxSelections: corePoll.maxSelections,
     durationSeconds: corePoll.durationSeconds ?? undefined,
@@ -529,6 +531,8 @@ export async function executePollAction(params: {
     gateway: params.ctx.gateway,
     idempotencyKey: params.ctx.idempotencyKey,
     preparedPlugin: params.ctx.plugin,
+    sessionKey: params.ctx.sessionKey,
+    inboundEventKind: params.ctx.inboundEventKind,
   });
 
   return {
