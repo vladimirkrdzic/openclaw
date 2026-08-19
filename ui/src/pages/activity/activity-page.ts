@@ -335,7 +335,7 @@ class ActivityPage extends OpenClawLightDomElement {
                   decisionCursor &&
                   error instanceof GatewayRequestError &&
                   error.gatewayCode === "INVALID_REQUEST" &&
-                  error.retryable !== true
+                  !error.retryable
                     ? "restart"
                     : "retry",
               };
