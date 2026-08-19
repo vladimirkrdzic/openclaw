@@ -889,7 +889,7 @@ describe("grouped chat rendering", () => {
     });
   });
 
-  it("orders user footer actions before the sender name and timestamp", () => {
+  it("orders user footer actions after the sender name and timestamp", () => {
     const container = document.createElement("div");
     renderGroupedMessage(container, createUserMessage("User footer order."), "user", {
       onReply: vi.fn(),
@@ -910,7 +910,7 @@ describe("grouped chat rendering", () => {
       return element.getAttribute("aria-label");
     });
 
-    expect(order).toEqual(["Reply to message", "Rewind", "name", "time"]);
+    expect(order).toEqual(["name", "time", "Reply to message", "Rewind"]);
   });
 
   it("keeps hidden assistant thinking out of inline reply context", () => {

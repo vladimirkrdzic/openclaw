@@ -155,8 +155,8 @@
   pointer-events: auto;
 }
 
-/* Shared threads keep the author name visible beside the gutter avatar. The
-   other footer details stay focusable but leave the row layout until reveal. */
+/* Shared threads keep the author name visible beside the gutter avatar. Hidden
+   details retain their exact footprint so revealing them cannot move identity. */
 .chat-group-footer--persistent-identity {
   position: relative;
   opacity: var(--chat-persistent-footer-opacity, 1);
@@ -167,7 +167,6 @@
 .chat-group-footer--persistent-identity .chat-group-timestamp,
 .chat-group-footer--persistent-identity .msg-meta,
 .chat-group-footer--persistent-identity .chat-group-footer-actions {
-  position: var(--chat-footer-detail-position, absolute);
   opacity: var(--chat-footer-disclosure-opacity, 0);
   pointer-events: var(--chat-footer-disclosure-pointer-events, none);
 }
@@ -190,7 +189,6 @@
 .chat-group:hover .chat-group-footer--persistent-identity .chat-group-footer-actions,
 .chat-group:focus-within .chat-group-footer--persistent-identity .chat-group-footer-actions,
 .chat-group-footer--persistent-identity:has(details.msg-meta[open]) .chat-group-footer-actions {
-  position: static;
   opacity: 1;
   pointer-events: auto;
 }
@@ -203,9 +201,8 @@
   min-width: 0;
 }
 
-/* Own-message footers are right-aligned, so hover-revealed time/actions must
-   slot in to the LEFT of the always-visible name; otherwise the name jumps
-   sideways on hover. Peer footers are left-aligned and already stable. */
+/* Own-message footers are right-aligned, so time sits before the visible name
+   while actions use the same trailing placement as every other message. */
 .chat-group.user:not(.chat-group--peer) .chat-group-footer--persistent-identity .chat-sender-name {
   order: 1;
 }
@@ -216,7 +213,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .chat-group-footer-actions {
@@ -227,7 +224,7 @@
 .chat-group.assistant .chat-group-footer-actions,
 .chat-group.assistant .chat-message-actions-row {
   justify-content: flex-start;
-  margin-left: 0;
+  margin-inline-start: 0;
 }
 
 .chat-message-actions-row {
@@ -729,7 +726,6 @@ img.chat-avatar.chat-avatar--logo {
   .chat-group {
     --chat-footer-disclosure-opacity: 1;
     --chat-footer-disclosure-pointer-events: auto;
-    --chat-footer-detail-position: static;
     padding-bottom: 0;
     margin-bottom: 14px;
   }
@@ -741,14 +737,12 @@ img.chat-avatar.chat-avatar--logo {
   :where(.chat-thread) .chat-group {
     --chat-footer-disclosure-opacity: 0;
     --chat-footer-disclosure-pointer-events: none;
-    --chat-footer-detail-position: absolute;
     --chat-persistent-footer-opacity: 0;
   }
 
   :where(.chat-thread) .chat-group:is(.chat-group--meta-revealed, :focus-within) {
     --chat-footer-disclosure-opacity: 1;
     --chat-footer-disclosure-pointer-events: auto;
-    --chat-footer-detail-position: static;
     --chat-persistent-footer-opacity: 1;
   }
 

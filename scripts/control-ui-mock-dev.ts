@@ -1142,6 +1142,22 @@ function buildScrollableChatHistory(baseTime: number): unknown[] {
       "Refactored the render guard and reran the suite; all 12 tests pass.",
       workTurnBase + 172_000,
     ),
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "The peer identity stays fixed while its trailing message actions appear.",
+        },
+      ],
+      timestamp: workTurnBase + 180_000,
+      __openclaw: {
+        id: "mock-multiparty-peer-message",
+        senderId: "presence-colin",
+        senderName: "Colin",
+        seq: 82,
+      },
+    },
   );
 
   return messages;
